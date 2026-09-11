@@ -27,6 +27,8 @@
         "reinforcementMaxScore": { "type": "number" },
         "globalizationMaxScore": { "type": "number" },
         "hasGlobalization": { "type": "boolean" },
+        "improvementWorkMaxScore": { "type": "number" },
+        "improvementExamMaxScore": { "type": "number" },
         "createdAt": { "type": "number" }
       },
       "required": ["name", "component", "date", "course", "subject", "createdAt"]
@@ -41,6 +43,8 @@
         "originalGrade": { "type": "number" },
         "globalizationGrade": { "type": "number" },
         "reinforcementGrade": { "type": "number" },
+        "improvementWorkGrade": { "type": "number" },
+        "improvementExamGrade": { "type": "number" },
         "observation": { "type": "string", "maxLength": 500 },
         "reinforcementDate": { "type": "string", "maxLength": 20 },
         "lastUpdated": { "type": "string", "maxLength": 20 }

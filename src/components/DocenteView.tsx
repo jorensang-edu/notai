@@ -1,7 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { EvaluationComponent, Activity, Grade, CourseName, SubjectName } from '../types';
-import { calculateFinalGrade, computeCompositeOriginal, convertTo10, formatGrade, calculateComponentAverage, calculateTrimestralAverage, calculateAnnualAverage } from '../utils';
+import { 
+  calculateFinalGrade, 
+  computeCompositeOriginal, 
+  convertTo10, 
+  formatGrade, 
+  calculateComponentAverage, 
+  calculateTrimestralAverage, 
+  calculateAnnualAverage,
+  computeActivityFinalGrade,
+  countStudentReinforcementsForSubject,
+  getEvaluacionFinalDetails
+} from '../utils';
 import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle } from 'lucide-react';
 import { auth } from '../firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -177,7 +188,12 @@ const [searchQuery, setSearchQuery] = useState('');
     setIsMobileMenuOpen(false);
   };
 
-  const handleGradeChange = (studentId: string, activityId: string, field: 'original' | 'reinforcement' | 'globalization' | 'observation', value: string) => {
+  const handleGradeChange = (
+    studentId: string, 
+    activityId: string, 
+    field: 'original' | 'reinforcement' | 'globalization' | 'observation' | 'improvementWork' | 'improvementExam', 
+    value: string
+  ) => {
     let numValue: number | null = null;
     if (field !== 'observation') {
       numValue = value === '' ? null : parseFloat(value);
@@ -190,13 +206,17 @@ const [searchQuery, setSearchQuery] = useState('');
     let reinf = existing?.reinforcementGrade ?? null;
     let glob = existing?.globalizationGrade ?? null;
     let obs = existing?.observation;
+    let impWork = existing?.improvementWorkGrade ?? null;
+    let impExam = existing?.improvementExamGrade ?? null;
 
     if (field === 'original') orig = numValue;
     if (field === 'reinforcement') reinf = numValue;
     if (field === 'globalization') glob = numValue;
     if (field === 'observation') obs = value;
+    if (field === 'improvementWork') impWork = numValue;
+    if (field === 'improvementExam') impExam = numValue;
 
-    updateGrade(studentId, activityId, orig, reinf, glob, obs);
+    updateGrade(studentId, activityId, orig, reinf, glob, obs, impWork, impExam);
   };
 
   const confirmDeleteActivity = (activity: Activity) => {
@@ -257,7 +277,7 @@ const [searchQuery, setSearchQuery] = useState('');
         headerRow3.push('Calif. Modif.');
       });
 
-      headerRow1.push(`Total Ref. Global`, `Promedio ${selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}`);
+      headerRow1.push(`Total Ref. Global (${currentSubject})`, `Promedio ${selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}`);
       headerRow2.push('', '');
       headerRow3.push('', '');
 
@@ -270,10 +290,10 @@ const [searchQuery, setSearchQuery] = useState('');
         
         const studentActivitiesData = trimActivities.map(a => {
           const grade = getGradeRecord(student.id, a.id);
-          const isEvalFinal = a.component === 'EVALUACIÓN FINAL';
-          const origEq10 = computeCompositeOriginal(grade?.originalGrade ?? null, grade?.globalizationGrade ?? null, a.maxScore, a.globalizationMaxScore, isEvalFinal, a.hasGlobalization);
-          const refEq10 = convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
-          const finalGrade = origEq10 !== null ? calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, a.reinforcementMaxScore) : null;
+          const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
+          const refEq10 = a.component === 'EVALUACIÓN FINAL' 
+            ? (efDetails?.attempted ? (efDetails.origEq10 < 7 ? `Trab:${efDetails.workEq10 ?? '-'} Ex:${efDetails.examEq10 ?? '-'}` : `Ex:${efDetails.examEq10 ?? '-'}`) : '')
+            : convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
           return { origEq10, refEq10, finalGrade };
         });
         
@@ -283,7 +303,7 @@ const [searchQuery, setSearchQuery] = useState('');
            rowData.push(actData.finalGrade !== null ? actData.finalGrade : '');
         });
         
-        const totalReinforcements = grades.filter(g => g.studentId === student.id && trimActivities.some(a => a.id === g.activityId) && g.reinforcementGrade !== null).length;
+        const totalReinforcements = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
         rowData.push(totalReinforcements);
 
         const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
@@ -341,7 +361,7 @@ const [searchQuery, setSearchQuery] = useState('');
       headerRow3.push('Calif. Modif.');
     });
 
-    headerRow1.push(`Total Ref. Global`, `Promedio ${selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}`);
+    headerRow1.push(`Total Ref. Global (${currentSubject})`, `Promedio ${selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}`);
     headerRow2.push('', '');
     headerRow3.push('', '');
 
@@ -355,10 +375,10 @@ const [searchQuery, setSearchQuery] = useState('');
       
       const studentActivitiesData = filteredActivities.map(a => {
         const grade = getGradeRecord(student.id, a.id);
-        const isEvalFinal = a.component === 'EVALUACIÓN FINAL';
-        const origEq10 = computeCompositeOriginal(grade?.originalGrade ?? null, grade?.globalizationGrade ?? null, a.maxScore, a.globalizationMaxScore, isEvalFinal, a.hasGlobalization);
-        const refEq10 = convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
-        const finalGrade = origEq10 !== null ? calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, a.reinforcementMaxScore) : null;
+        const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
+        const refEq10 = a.component === 'EVALUACIÓN FINAL' 
+          ? (efDetails?.attempted ? (efDetails.origEq10 < 7 ? `Trab:${efDetails.workEq10 ?? '-'} Ex:${efDetails.examEq10 ?? '-'}` : `Ex:${efDetails.examEq10 ?? '-'}`) : '')
+          : convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
         return { origEq10, refEq10, finalGrade };
       });
       
@@ -368,7 +388,7 @@ const [searchQuery, setSearchQuery] = useState('');
          rowData.push(data.finalGrade !== null ? data.finalGrade : '');
       });
       
-      const totalReinforcements = grades.filter(g => g.studentId === student.id && g.reinforcementGrade !== null).length;
+      const totalReinforcements = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
       rowData.push(totalReinforcements);
 
       const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
@@ -713,7 +733,10 @@ const [searchQuery, setSearchQuery] = useState('');
                           </button>
                         </th>
                       ))}
-                      <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20">Total Ref. Global</th>
+                      <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-[90px] z-20">
+                        Total Ref. Global<br/>
+                        <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
+                      </th>
                       <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20">Promedio {selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}</th>
                     </tr>
                   </thead>
@@ -721,14 +744,12 @@ const [searchQuery, setSearchQuery] = useState('');
                     {filteredStudents.map(student => {
                       const studentActivitiesData = filteredActivities.map(a => {
                         const grade = getGradeRecord(student.id, a.id);
-                        const isEvalFinal = a.component === 'EVALUACIÓN FINAL';
-                        const origEq10 = computeCompositeOriginal(grade?.originalGrade ?? null, grade?.globalizationGrade ?? null, a.maxScore, a.globalizationMaxScore, isEvalFinal, a.hasGlobalization);
+                        const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
                         const refEq10 = convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
-                        const finalGrade = origEq10 !== null ? calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, a.reinforcementMaxScore) : null;
-                        return { activity: a, grade, finalGrade, origEq10, refEq10 };
+                        return { activity: a, grade, finalGrade, origEq10, refEq10, efDetails };
                       });
 
-                      const totalReinforcements = grades.filter(g => g.studentId === student.id && g.reinforcementGrade !== null).length;
+                      const totalReinforcements = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
 
                       const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
                       let avg = null;
@@ -746,17 +767,71 @@ const [searchQuery, setSearchQuery] = useState('');
                           </td>
                           {studentActivitiesData.map(data => {
                             const isRequiringReinforcement = data.finalGrade !== null && data.finalGrade < 7;
+                            const isEvalFinal = data.activity.component === 'EVALUACIÓN FINAL';
                             return (
                               <td key={data.activity.id} className={`px-3 py-2 md:px-4 md:py-3 text-center border-white/5 ${isRequiringReinforcement ? 'bg-amber-500/5' : ''}`}>
                                 {data.origEq10 !== null ? (
                                   <div className="flex flex-col items-center justify-center">
-                                    <span className={`font-semibold ${isRequiringReinforcement && data.grade?.reinforcementGrade == null ? 'text-amber-500' : 'text-slate-300'}`}>
-                                      {formatGrade(data.origEq10)}
-                                    </span>
-                                    {data.refEq10 !== null && (
-                                      <span className="text-[11px] sm:text-xs text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 px-1.5 rounded">
-                                        R: {formatGrade(data.refEq10)}
-                                      </span>
+                                    {isEvalFinal ? (
+                                      <>
+                                        {data.efDetails?.noImprovement ? (
+                                          <>
+                                            <span className="font-semibold text-slate-300">
+                                              {formatGrade(data.origEq10)}
+                                            </span>
+                                            <span 
+                                              className="text-[9px] text-rose-400 font-medium mt-0.5 bg-rose-500/10 border border-rose-500/20 px-1 rounded cursor-help"
+                                              title={`No hubo mejora: Promedio mejoramiento (${formatGrade(data.efDetails.calculatedAvg)}) < Original (${formatGrade(data.efDetails.origEq10)}). Se mantiene nota original.`}
+                                            >
+                                              Sin mejora ({formatGrade(data.efDetails.calculatedAvg)})
+                                            </span>
+                                          </>
+                                        ) : data.efDetails?.improved ? (
+                                          <>
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-[11px] text-slate-500 line-through">
+                                                {formatGrade(data.efDetails.origEq10)}
+                                              </span>
+                                              <span className="font-bold text-emerald-400 text-sm">
+                                                {formatGrade(data.efDetails.finalGrade)}
+                                              </span>
+                                            </div>
+                                            <span 
+                                              className="text-[9px] text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded cursor-help"
+                                              title={`Mejora registrada: Trabajo=${data.efDetails.workEq10 ?? '-'}, Examen=${data.efDetails.examEq10 ?? '-'}`}
+                                            >
+                                              ▲ Mejora
+                                            </span>
+                                          </>
+                                        ) : data.efDetails?.isPending ? (
+                                          <>
+                                            <span className="font-semibold text-amber-400">
+                                              {formatGrade(data.origEq10)}
+                                            </span>
+                                            <span 
+                                              className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
+                                              title="Requiere Trabajo de Refuerzo y Examen de Mejoramiento"
+                                            >
+                                              Mej. Pend.
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span className="font-semibold text-slate-300">
+                                            {formatGrade(data.origEq10)}
+                                          </span>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className={`font-semibold ${isRequiringReinforcement && data.grade?.reinforcementGrade == null ? 'text-amber-500' : 'text-slate-300'}`}>
+                                          {formatGrade(data.origEq10)}
+                                        </span>
+                                        {data.refEq10 !== null && (
+                                          <span className="text-[11px] sm:text-xs text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 px-1.5 rounded">
+                                            R: {formatGrade(data.refEq10)}
+                                          </span>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 ) : (
@@ -870,9 +945,9 @@ const [searchQuery, setSearchQuery] = useState('');
                       const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
                       const isMejoramiento = activity.component === 'MEJORAMIENTO';
                       const hasGlob = isEvalFinal && activity.hasGlobalization;
-                                            let colSpan = 6;
+                      let colSpan = 6;
                       if (isEvalFinal) {
-                        colSpan = hasGlob ? 5 : 4;
+                        colSpan = hasGlob ? 9 : 8;
                       } else if (isMejoramiento) {
                         colSpan = 4;
                       }
@@ -895,7 +970,7 @@ const [searchQuery, setSearchQuery] = useState('');
                             <span className="text-sm font-bold text-slate-200">{activity.name}</span>
                             {activity.date && <span className="text-[9px] text-amber-400/80 font-mono mt-0.5">{activity.date}</span>}
                             <span className="text-[9px] text-blue-400 font-mono mt-0.5" title="Calificación máxima">10</span>
-                            <div className="flex items-center justify-center gap-2 mt-1 bg-black/20 p-1.5 rounded-lg border border-white/5 w-full">
+                            <div className="flex flex-wrap items-center justify-center gap-2 mt-1 bg-black/20 p-1.5 rounded-lg border border-white/5 w-full">
                               {hasGlob && (
                                 <div className="flex flex-col items-center gap-1">
                                   <span className="text-[9px] text-slate-400 uppercase">Base Glob.</span>
@@ -922,6 +997,34 @@ const [searchQuery, setSearchQuery] = useState('');
                                   disabled={isUnauthorized}
                                 />
                               </div>
+                              {isEvalFinal && (
+                                <>
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className="text-[9px] text-amber-400 uppercase" title="Base para Trabajo de Refuerzo">Base Trab.</span>
+                                    <input
+                                      type="number"
+                                      value={activity.improvementWorkMaxScore ?? ''}
+                                      placeholder="10"
+                                      onChange={(e) => updateActivity(activity.id, { improvementWorkMaxScore: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                      className="w-12 px-1 py-1 bg-black/40 border border-white/10 rounded text-xs text-amber-400 focus:outline-none focus:border-amber-500 text-center font-mono"
+                                      title="Calificación máxima del trabajo de refuerzo"
+                                      disabled={isUnauthorized}
+                                    />
+                                  </div>
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className="text-[9px] text-purple-400 uppercase" title="Base para Examen de Mejoramiento">Base Ex. Mej.</span>
+                                    <input
+                                      type="number"
+                                      value={activity.improvementExamMaxScore ?? ''}
+                                      placeholder="10"
+                                      onChange={(e) => updateActivity(activity.id, { improvementExamMaxScore: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                      className="w-12 px-1 py-1 bg-black/40 border border-white/10 rounded text-xs text-purple-400 focus:outline-none focus:border-purple-500 text-center font-mono"
+                                      title="Calificación máxima del examen de mejoramiento"
+                                      disabled={isUnauthorized}
+                                    />
+                                  </div>
+                                </>
+                              )}
                               {!isEvalFinal && !isMejoramiento && (
                                 <div className="flex flex-col items-center gap-1">
                                   <span className="text-[9px] text-slate-400 uppercase">Base Ref.</span>
@@ -945,7 +1048,8 @@ const [searchQuery, setSearchQuery] = useState('');
                       Promedio<br/>{selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}
                     </th>
                     <th className="px-4 py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20" rowSpan={2}>
-                      Refuerzos<br/>Totales
+                      Refuerzos<br/>Totales<br/>
+                      <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
                     </th>
                   </tr>
                   <tr>
@@ -958,10 +1062,18 @@ const [searchQuery, setSearchQuery] = useState('');
                         {hasGlob && <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[70px]">Glob.</th>}
                         <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[80px]">{isEvalFinal ? 'Escrita' : 'Orig.'}</th>
                         <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[70px] text-blue-400/70">Eq. 10</th>
+                        {isEvalFinal && (
+                          <>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-amber-400/90" title="Trabajo de Refuerzo (Obligatorio si < 7)">Trab. Ref.</th>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[65px] text-amber-400/70">Eq. 10</th>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-purple-400/90" title="Examen de Mejoramiento">Ex. Mej.</th>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[65px] text-purple-400/70">Eq. 10</th>
+                          </>
+                        )}
                         {!isEvalFinal && !isMejoramiento && <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[80px]">Ref.</th>}
                         {!isEvalFinal && !isMejoramiento && <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[70px] text-emerald-400/70">Ref Eq. 10</th>}
-                        <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[80px] text-slate-300">Definitiva</th>
-                        <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[150px] text-slate-400">Obs.</th>
+                        <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[90px] text-slate-300">Definitiva</th>
+                        <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[140px] text-slate-400">Obs.</th>
                       </React.Fragment>
                       )
                     })}
@@ -973,11 +1085,8 @@ const [searchQuery, setSearchQuery] = useState('');
 
                     const studentActivitiesData = displayActivities.map(a => {
                       const grade = getGradeRecord(student.id, a.id);
-                      const isEvalFinal = a.component === 'EVALUACIÓN FINAL';
-                      const origEq10 = computeCompositeOriginal(grade?.originalGrade ?? null, grade?.globalizationGrade ?? null, a.maxScore, a.globalizationMaxScore, isEvalFinal, a.hasGlobalization);
-                      // Since we already calculated the eq10 for original, we pass it as 'original' and set maxScore to 10
-                      const finalGrade = origEq10 !== null ? calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, a.reinforcementMaxScore) : null;
-                      return { activity: a, grade, finalGrade, origEq10 };
+                      const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
+                      return { activity: a, grade, finalGrade, origEq10, efDetails };
                     });
 
                     const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
@@ -989,22 +1098,14 @@ const [searchQuery, setSearchQuery] = useState('');
                       avg = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, selectedComponent as any, selectedCourse, currentSubject);
                     }
 
-                    const missingReinforcements = evaluated.filter(a => a.finalGrade! < 7 && a.grade?.reinforcementGrade == null);
+                    const missingReinforcements = evaluated.filter(a => {
+                      if (a.activity.component === 'EVALUACIÓN FINAL') {
+                        return a.efDetails?.isPending;
+                      }
+                      return a.finalGrade! < 7 && a.grade?.reinforcementGrade == null;
+                    });
 
-                    const globalActivities = activities.filter(a => a.course === selectedCourse && a.subject === currentSubject);
-                    const globalEvaluated = globalActivities.map(a => {
-                       const g = getGradeRecord(student.id, a.id);
-                       const isEvalFinal = a.component === 'EVALUACIÓN FINAL';
-                       const origEq10 = computeCompositeOriginal(g?.originalGrade ?? null, g?.globalizationGrade ?? null, a.maxScore, a.globalizationMaxScore, isEvalFinal, a.hasGlobalization);
-                       return origEq10 !== null ? calculateFinalGrade(origEq10, g?.reinforcementGrade ?? null, 10, a.reinforcementMaxScore) : null;
-                    }).filter(val => val !== null);
-                    const globalAvg = globalEvaluated.length > 0 ? globalEvaluated.reduce((acc, curr) => acc + curr!, 0) / globalEvaluated.length : null;
-                    
-                    const globalRefuerzos = grades.filter(g => 
-                      g.studentId === student.id && 
-                      g.reinforcementGrade !== null &&
-                      globalActivities.some(a => a.id === g.activityId)
-                    ).length;
+                    const globalRefuerzos = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
 
                     return (
                       <tr key={student.id} className="hover:bg-white/5 transition-colors group">
@@ -1013,14 +1114,16 @@ const [searchQuery, setSearchQuery] = useState('');
                           <div className="text-[11px] sm:text-xs text-slate-500 font-mono mt-0.5">{student.code}</div>
                         </td>
                         
-                        {studentActivitiesData.map(({ activity, grade, finalGrade, origEq10 }) => {
+                        {studentActivitiesData.map(({ activity, grade, finalGrade, origEq10, efDetails }) => {
                           const origMax = activity.maxScore || 10;
                           const refMax = activity.reinforcementMaxScore || origMax;
                           const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
                           const isMejoramiento = activity.component === 'MEJORAMIENTO';
                           const hasGlob = isEvalFinal && activity.hasGlobalization;
                           
-                          const refEq10 = grade?.reinforcementGrade != null && !isNaN(grade.reinforcementGrade) ? (grade.reinforcementGrade / refMax) * 10 : null;
+                          const refEq10 = (!isEvalFinal && grade?.reinforcementGrade != null && !isNaN(grade.reinforcementGrade))
+                            ? (grade.reinforcementGrade / refMax) * 10
+                            : null;
                           const isRequiringReinforcement = finalGrade !== null && finalGrade < 7 && !isEvalFinal && !isMejoramiento;
                           const isDefinitivaLow = finalGrade !== null && finalGrade < 7;
                           
@@ -1034,6 +1137,7 @@ const [searchQuery, setSearchQuery] = useState('');
                                     value={grade?.globalizationGrade ?? ''}
                                     onChange={(e) => handleGradeChange(student.id, activity.id, 'globalization', e.target.value)}
                                     className={'w-14 px-1 py-1 text-center bg-[#0f172a] border border-white/10 rounded focus:outline-none focus:border-purple-500 font-mono text-xs ' + (isDefinitivaLow ? 'text-rose-400' : 'text-slate-200')}
+                                    disabled={isUnauthorized}
                                   />
                                 </td>
                               )}
@@ -1045,6 +1149,7 @@ const [searchQuery, setSearchQuery] = useState('');
                                   value={grade?.originalGrade ?? ''}
                                   onChange={(e) => handleGradeChange(student.id, activity.id, 'original', e.target.value)}
                                   className={'w-16 px-1 py-1 text-center bg-[#0f172a] border border-white/10 rounded focus:outline-none focus:border-blue-500 font-mono text-xs ' + (isDefinitivaLow ? 'text-rose-400' : 'text-slate-200')}
+                                  disabled={isUnauthorized}
                                 />
                               </td>
                               {/* Original Eq 10 */}
@@ -1053,6 +1158,61 @@ const [searchQuery, setSearchQuery] = useState('');
                                   {origEq10 !== null ? formatGrade(origEq10) : '-'}
                                 </span>
                               </td>
+                              
+                              {/* EVALUACIÓN FINAL: Improvement inputs */}
+                              {isEvalFinal && (
+                                <>
+                                  {/* Trabajo de Refuerzo (Obligatorio si origEq10 < 7) */}
+                                  <td className={'px-2 py-2 text-center border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-amber-500/5' : '')}>
+                                    <input
+                                      type="number"
+                                      min="0" step="0.01"
+                                      value={grade?.improvementWorkGrade ?? ''}
+                                      onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementWork', e.target.value)}
+                                      placeholder={origEq10 !== null && origEq10 < 7 ? (grade?.improvementWorkGrade == null ? 'Oblig.' : '') : 'N/A'}
+                                      title={origEq10 !== null && origEq10 < 7 ? "Trabajo de refuerzo obligatorio (Nota < 7)" : "Solo aplica si la nota original es menor a 7"}
+                                      className={
+                                        'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
+                                        (origEq10 !== null && origEq10 < 7 && grade?.improvementWorkGrade == null
+                                          ? 'border border-amber-400 ring-1 ring-amber-400/40 text-amber-300 placeholder:text-amber-500/70'
+                                          : 'border border-white/10 text-amber-400 focus:outline-none focus:border-amber-500 disabled:opacity-25')
+                                      }
+                                      disabled={isUnauthorized || origEq10 === null || origEq10 >= 7}
+                                    />
+                                  </td>
+                                  {/* Trabajo Eq 10 */}
+                                  <td className={'px-2 py-2 text-center border-r border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-amber-500/5' : '')}>
+                                    <span className="font-mono text-xs text-amber-400/80">
+                                      {efDetails?.workEq10 !== null && efDetails?.workEq10 !== undefined ? formatGrade(efDetails.workEq10) : '-'}
+                                    </span>
+                                  </td>
+
+                                  {/* Examen de Mejoramiento (Obligatorio si < 7, opcional si 7 a 9.99) */}
+                                  <td className={'px-2 py-2 text-center border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-purple-500/5' : '')}>
+                                    <input
+                                      type="number"
+                                      min="0" step="0.01"
+                                      value={grade?.improvementExamGrade ?? ''}
+                                      onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementExam', e.target.value)}
+                                      placeholder={origEq10 !== null && origEq10 < 7 ? (grade?.improvementExamGrade == null ? 'Oblig.' : '') : (origEq10 !== null && origEq10 < 10 ? 'Opc.' : 'N/A')}
+                                      title={origEq10 !== null && origEq10 < 7 ? "Examen de mejoramiento obligatorio" : (origEq10 !== null && origEq10 < 10 ? "Examen de mejoramiento opcional" : "Ya tiene 10")}
+                                      className={
+                                        'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
+                                        (origEq10 !== null && origEq10 < 7 && grade?.improvementExamGrade == null
+                                          ? 'border border-amber-400 ring-1 ring-amber-400/40 text-purple-300 placeholder:text-amber-500/70'
+                                          : 'border border-white/10 text-purple-400 focus:outline-none focus:border-purple-500 disabled:opacity-25')
+                                      }
+                                      disabled={isUnauthorized || origEq10 === null || origEq10 >= 10}
+                                    />
+                                  </td>
+                                  {/* Examen Eq 10 */}
+                                  <td className={'px-2 py-2 text-center border-r border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-purple-500/5' : '')}>
+                                    <span className="font-mono text-xs text-purple-400/80">
+                                      {efDetails?.examEq10 !== null && efDetails?.examEq10 !== undefined ? formatGrade(efDetails.examEq10) : '-'}
+                                    </span>
+                                  </td>
+                                </>
+                              )}
                               
                               {!isEvalFinal && !isMejoramiento && (
                                 <>
@@ -1079,9 +1239,35 @@ const [searchQuery, setSearchQuery] = useState('');
                               {/* Definitiva */}
                               <td className={'px-2 py-2 text-center border-white/5 ' + (isDefinitivaLow ? 'bg-amber-500/10' : 'bg-white/5')}>
                                 {finalGrade !== null ? (
-                                  <span className={'font-bold px-2 py-0.5 rounded text-xs ' + (isDefinitivaLow ? 'text-rose-400' : (!isEvalFinal && !isMejoramiento && grade?.reinforcementGrade != null) ? 'text-emerald-400' : 'text-slate-200')}>
-                                    {formatGrade(finalGrade)}
-                                  </span>
+                                  <div className="flex flex-col items-center">
+                                    <span className={'font-bold px-2 py-0.5 rounded text-xs ' + (isDefinitivaLow ? 'text-rose-400' : (!isEvalFinal && !isMejoramiento && grade?.reinforcementGrade != null) || efDetails?.improved ? 'text-emerald-400' : 'text-slate-200')}>
+                                      {formatGrade(finalGrade)}
+                                    </span>
+                                    {isEvalFinal && efDetails?.noImprovement && (
+                                      <span 
+                                        className="text-[9px] text-rose-400 font-medium mt-0.5 bg-rose-500/10 border border-rose-500/20 px-1 rounded cursor-help"
+                                        title={`No hubo mejora: Promedio calculado (${formatGrade(efDetails.calculatedAvg)}) < Original (${formatGrade(efDetails.origEq10)}). Se mantiene nota original.`}
+                                      >
+                                        Sin mejora ({formatGrade(efDetails.calculatedAvg)})
+                                      </span>
+                                    )}
+                                    {isEvalFinal && efDetails?.improved && (
+                                      <span 
+                                        className="text-[9px] text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded cursor-help"
+                                        title={`Mejora: Original ${formatGrade(efDetails.origEq10)} ➔ Final ${formatGrade(efDetails.finalGrade)}`}
+                                      >
+                                        ▲ Mejora ({formatGrade(efDetails.origEq10)} ➔ {formatGrade(efDetails.finalGrade)})
+                                      </span>
+                                    )}
+                                    {isEvalFinal && efDetails?.isPending && (
+                                      <span 
+                                        className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
+                                        title="Requiere Trabajo de Refuerzo y Examen de Mejoramiento"
+                                      >
+                                        Mej. Pend.
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-slate-600">-</span>
                                 )}
@@ -1115,7 +1301,7 @@ const [searchQuery, setSearchQuery] = useState('');
                         </td>
                         {/* Refuerzos Totales Row */}
                         <td className="px-4 py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
-                          <span className="font-bold text-base text-blue-400" title="Total de refuerzos en todos los trimestres/aportes">
+                          <span className="font-bold text-base text-blue-400" title="Total de refuerzos acumulados en la materia">
                             {globalRefuerzos}
                           </span>
                         </td>

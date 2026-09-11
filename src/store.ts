@@ -127,7 +127,9 @@ export function useAppStore() {
     originalGrade: number | null,
     reinforcementGrade: number | null,
     globalizationGrade?: number | null,
-    observation?: string
+    observation?: string,
+    improvementWorkGrade?: number | null,
+    improvementExamGrade?: number | null
   ) => {
     const existingGrade = grades.find(g => g.studentId === studentId && g.activityId === activityId);
     const now = getCurrentFormattedDate();
@@ -135,9 +137,9 @@ export function useAppStore() {
     // We can use a composite ID for grades to make updates simpler
     const id = `${studentId}_${activityId}`;
 
-    let reinforcementDate = reinforcementGrade !== null ? now : null;
-    if (existingGrade && existingGrade.reinforcementGrade === reinforcementGrade && existingGrade.reinforcementDate) {
-       reinforcementDate = existingGrade.reinforcementDate;
+    let reinforcementDate = (reinforcementGrade !== null || improvementWorkGrade !== null || improvementExamGrade !== null) ? now : null;
+    if (existingGrade && existingGrade.reinforcementDate) {
+      reinforcementDate = existingGrade.reinforcementDate;
     }
 
     const newGrade: Grade = {
@@ -147,12 +149,18 @@ export function useAppStore() {
       reinforcementGrade: reinforcementGrade ?? null,
       globalizationGrade: globalizationGrade !== undefined ? globalizationGrade : (existingGrade?.globalizationGrade ?? null),
       observation: observation !== undefined ? observation : (existingGrade?.observation ?? ''),
+      improvementWorkGrade: improvementWorkGrade !== undefined ? improvementWorkGrade : (existingGrade?.improvementWorkGrade ?? null),
+      improvementExamGrade: improvementExamGrade !== undefined ? improvementExamGrade : (existingGrade?.improvementExamGrade ?? null),
       reinforcementDate,
       lastUpdated: now,
     };
 
+    const firestoreData = Object.fromEntries(
+      Object.entries(newGrade).filter(([_, v]) => v !== undefined)
+    );
+
     try {
-      await setDoc(doc(db, 'grades', id), newGrade);
+      await setDoc(doc(db, 'grades', id), firestoreData);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `grades/${id}`);
     }

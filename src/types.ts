@@ -32,6 +32,8 @@ export interface Activity {
   reinforcementMaxScore?: number;
   globalizationMaxScore?: number;
   hasGlobalization?: boolean;
+  improvementWorkMaxScore?: number;
+  improvementExamMaxScore?: number;
   createdAt?: number;
   teacherEmail?: string;
 }
@@ -42,9 +44,28 @@ export interface Grade {
   originalGrade: number | null;
   globalizationGrade?: number | null;
   reinforcementGrade: number | null;
+  improvementWorkGrade?: number | null;
+  improvementExamGrade?: number | null;
   observation?: string;
   reinforcementDate: string | null; // DD/MM/AAAA format
   lastUpdated: string; // DD/MM/AAAA format
+}
+
+export interface EvaluacionFinalDetails {
+  origEq10: number | null;
+  workScore: number | null;
+  workEq10: number | null;
+  examScore: number | null;
+  examEq10: number | null;
+  calculatedAvg: number | null;
+  finalGrade: number | null;
+  requiresImprovement: boolean; // true if origEq10 < 7
+  canImprove: boolean;          // true if 7 <= origEq10 < 10
+  isPending: boolean;           // true if origEq10 < 7 and work or exam is missing
+  attempted: boolean;           // true if required improvement inputs are provided
+  improved: boolean;            // true if calculatedAvg > origEq10
+  noImprovement: boolean;       // true if attempted and calculatedAvg < origEq10
+  statusMessage: string;
 }
 
 export interface ClassNote {

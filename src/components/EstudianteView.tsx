@@ -1,7 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { Student, Level, SubjectName, Trimestre, EvaluationComponent } from '../types';
-import { calculateFinalGrade, formatGrade, getCurrentFormattedDate, calculateComponentAverage, calculateTrimestralAverage, calculateAnnualAverage } from '../utils';
+import { 
+  calculateFinalGrade, 
+  formatGrade, 
+  getCurrentFormattedDate, 
+  calculateComponentAverage, 
+  calculateTrimestralAverage, 
+  calculateAnnualAverage,
+  computeActivityFinalGrade,
+  countStudentReinforcementsForSubject
+} from '../utils';
 import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download } from 'lucide-react';
 
 interface EstudianteViewProps {
@@ -46,38 +55,42 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
       (selectedComponent === 'ALL' || a.component === selectedComponent)
     );
     
-    // Total reinforcements across ALL subjects and activities for this student
-    const totalReinforcements = grades.filter(g => g.studentId === currentStudent.id && g.reinforcementGrade !== null).length;
+    // Total reinforcements filtered strictly by selectedSubject for this student across all trimestres
+    const totalReinforcementsSubject = countStudentReinforcementsForSubject(
+      currentStudent.id, 
+      activities, 
+      grades, 
+      selectedSubject, 
+      currentStudent.course
+    );
 
     let totalScore = 0;
     let gradedCount = 0;
-    const history: { activity: typeof activities[0], grade: typeof grades[0] | undefined, finalGrade: number | null }[] = [];
+    const history: { 
+      activity: typeof activities[0], 
+      grade: typeof grades[0] | undefined, 
+      finalGrade: number | null,
+      origEq10: number | null,
+      efDetails?: ReturnType<typeof computeActivityFinalGrade>['efDetails']
+    }[] = [];
     const pending: { activity: typeof activities[0] }[] = [];
     const requiresReinforcement: { activity: typeof activities[0], finalGrade: number }[] = [];
 
     studentActivities.forEach(activity => {
       const grade = grades.find(g => g.studentId === currentStudent.id && g.activityId === activity.id);
-      const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
-      const origEq10 = grade ? (
-        isEvalFinal ? (
-          (activity.hasGlobalization && grade.globalizationGrade != null) 
-            ? (((grade.globalizationGrade/(activity.globalizationMaxScore||10))*10)*0.2 + ((grade.originalGrade||0)/(activity.maxScore||10))*10*0.8) 
-            : (grade.originalGrade!=null ? (grade.originalGrade/(activity.maxScore||10))*10 : null)
-        ) : (grade.originalGrade!=null ? (grade.originalGrade/(activity.maxScore||10))*10 : null)
-      ) : null;
-      const finalGrade = origEq10 !== null ? (isEvalFinal ? origEq10 : calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, activity.reinforcementMaxScore)) : null;
+      const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(activity, grade);
 
       if (finalGrade !== null) {
         totalScore += finalGrade;
         gradedCount++;
-        history.push({ activity, grade, finalGrade });
+        history.push({ activity, grade, finalGrade, origEq10, efDetails });
         
         if (finalGrade < 7) {
           requiresReinforcement.push({ activity, finalGrade });
         }
       } else {
         pending.push({ activity });
-        history.push({ activity, grade: undefined, finalGrade: null }); // Show pending in history too
+        history.push({ activity, grade: undefined, finalGrade: null, origEq10: null });
       }
     });
 
@@ -100,7 +113,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
       averageAporte, 
       averageTrimestral, 
       averageAnual, 
-      totalReinforcements 
+      totalReinforcementsSubject 
     };
   }, [currentStudent, activities, grades, selectedSubject, selectedTrimestre, selectedComponent, courseParams]);
 
@@ -114,39 +127,13 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
     if (!currentStudent) return [];
     
     return allSubjects.filter(subject => {
-      const studentActivities = activities.filter(a => 
-        a.course === currentStudent.course && 
-        a.subject === subject &&
-        (selectedTrimestre === 'ALL' || a.trimestre === selectedTrimestre) &&
-        (selectedComponent === 'ALL' || a.component === selectedComponent)
-      );
-      let totalScore = 0;
-      let gradedCount = 0;
-      
-      studentActivities.forEach(activity => {
-        const grade = grades.find(g => g.studentId === currentStudent.id && g.activityId === activity.id);
-        const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
-        const origEq10 = grade ? (
-        isEvalFinal ? (
-          (activity.hasGlobalization && grade.globalizationGrade != null) 
-            ? (((grade.globalizationGrade/(activity.globalizationMaxScore||10))*10)*0.2 + ((grade.originalGrade||0)/(activity.maxScore||10))*10*0.8) 
-            : (grade.originalGrade!=null ? (grade.originalGrade/(activity.maxScore||10))*10 : null)
-        ) : (grade.originalGrade!=null ? (grade.originalGrade/(activity.maxScore||10))*10 : null)
-      ) : null;
-        const finalGrade = origEq10 !== null ? (isEvalFinal ? origEq10 : calculateFinalGrade(origEq10, grade?.reinforcementGrade ?? null, 10, activity.reinforcementMaxScore)) : null;
-        if (finalGrade !== null) {
-          totalScore += finalGrade;
-          gradedCount++;
-        }
-      });
-      
-      const currentTrim = selectedTrimestre === 'ALL' ? '1º Trimestre' : selectedTrimestre;
+      const currentTrim = selectedTrimestre === 'ALL' ? (courseParams?.trimestre || '1º Trimestre') : selectedTrimestre;
       const averageAnual = calculateAnnualAverage(currentStudent.id, activities, grades, currentStudent.course, subject);
       const averageTrimestral = calculateTrimestralAverage(currentStudent.id, activities, grades, currentTrim, currentStudent.course, subject);
       const average = averageAnual !== null ? averageAnual : averageTrimestral;
       return average !== null && average < 7;
     });
-  }, [currentStudent, activities, grades, selectedTrimestre, selectedComponent]);
+  }, [currentStudent, activities, grades, selectedTrimestre, courseParams]);
 
 
   const today = getCurrentFormattedDate();
@@ -260,8 +247,13 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div className="text-right sm:text-left">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Refuerzos Globales</p>
-                <p className="text-lg font-bold text-blue-400">{studentData?.totalReinforcements ?? 0}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Refuerzos Globales ({selectedSubject})
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-lg font-bold text-blue-400">{studentData?.totalReinforcementsSubject ?? 0}</p>
+                  <span className="text-[10px] text-slate-400">acumulados</span>
+                </div>
               </div>
             </div>
           </div>
@@ -397,8 +389,9 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                 {studentData?.history.length === 0 ? (
                   <p className="text-slate-500 italic text-sm">No hay actividades registradas.</p>
                 ) : (
-                  studentData?.history.map(({ activity, grade, finalGrade }) => {
+                  studentData?.history.map(({ activity, grade, finalGrade, origEq10, efDetails }) => {
                     const isReinforcement = finalGrade !== null && finalGrade < 7;
+                    const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
                     return (
                       <div key={activity.id} className="relative pl-6 pb-2 border-l border-white/10 last:border-0 last:pb-0">
                         <div className={`absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full ${isReinforcement ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'}`}></div>
@@ -414,34 +407,145 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                           </div>
                         </div>
 
-                        <div className="bg-black/20 rounded-xl p-4 border border-white/5 grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-3">
+                        <div className="bg-black/20 rounded-xl p-4 border border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
                           <div>
-                            <p className="text-xs text-slate-500 mb-1">{activity.component === 'EVALUACIÓN FINAL' ? 'Evaluación Escrita' : 'Nota Original'}</p>
-                            <p className="font-mono text-slate-300">{formatGrade(grade?.originalGrade ?? null)}</p>
+                            <p className="text-xs text-slate-500 mb-1">{isEvalFinal ? 'Evaluación Escrita' : 'Nota Original'}</p>
+                            <p className="font-mono text-slate-300">
+                              {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)} / ${activity.maxScore || 10}` : '-'}
+                            </p>
                           </div>
-                          {activity.component === 'EVALUACIÓN FINAL' && grade?.globalizationGrade != null && (
+                          {isEvalFinal && activity.hasGlobalization && (
                             <div>
-                              <p className="text-xs text-slate-500 mb-1">Globalización</p>
-                              <p className="font-mono text-slate-300">{formatGrade(grade.globalizationGrade)}</p>
+                              <p className="text-xs text-slate-500 mb-1">Globalización (20%)</p>
+                              <p className="font-mono text-slate-300">
+                                {grade?.globalizationGrade != null ? `${formatGrade(grade.globalizationGrade)} / ${activity.globalizationMaxScore || 10}` : '-'}
+                              </p>
                             </div>
                           )}
-                          {activity.component !== 'EVALUACIÓN FINAL' && activity.component !== 'MEJORAMIENTO' && (
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Nota Inicial (Eq. 10)</p>
+                            <p className="font-mono text-blue-400 font-semibold">
+                              {origEq10 !== null ? formatGrade(origEq10) : '-'}
+                            </p>
+                          </div>
+                          {!isEvalFinal && activity.component !== 'MEJORAMIENTO' && (
                             <div>
                               <p className="text-xs text-slate-500 mb-1">Refuerzo</p>
                               {grade?.reinforcementGrade != null ? (
-                                <p className="font-mono text-emerald-400">{formatGrade(grade.reinforcementGrade)}</p>
+                                <p className="font-mono text-emerald-400">
+                                  {formatGrade(grade.reinforcementGrade)} / {activity.reinforcementMaxScore || activity.maxScore || 10}
+                                </p>
                               ) : (
                                 <p className="font-mono text-slate-600">-</p>
                               )}
                             </div>
                           )}
-                          <div className="col-span-2 md:col-span-1">
+                          <div>
                             <p className="text-xs text-slate-500 mb-1">Definitiva</p>
-                            <span className={`font-bold px-2 py-1 rounded border text-xs ${isReinforcement ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
-                              {formatGrade(finalGrade)}
+                            <span className={`font-bold px-2 py-1 rounded border text-xs inline-block ${isReinforcement ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                              {finalGrade !== null ? formatGrade(finalGrade) : '-'}
                             </span>
                           </div>
                         </div>
+
+                        {/* Detalle del Proceso de Mejoramiento para Evaluación Final */}
+                        {isEvalFinal && efDetails && (
+                          <div className="mt-3 p-3 bg-purple-950/20 rounded-xl border border-purple-500/20 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold text-purple-300 uppercase tracking-wider">
+                                Proceso de Mejoramiento de Evaluación Final
+                              </p>
+                              {efDetails.requiresWork && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                                  Nota Inicial &lt; 7 (Requiere Trabajo y Examen)
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                              {efDetails.requiresWork && (
+                                <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                  <span className="text-slate-400 block mb-1 font-medium">Trabajo de Refuerzo</span>
+                                  {efDetails.workEq10 !== null ? (
+                                    <p className="font-mono font-bold text-amber-400">
+                                      {grade?.improvementWorkGrade} / {activity.improvementWorkMaxScore || 10}
+                                      <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.workEq10)} / 10)</span>
+                                    </p>
+                                  ) : (
+                                    <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                <span className="text-slate-400 block mb-1 font-medium">Examen de Mejoramiento</span>
+                                {efDetails.examEq10 !== null ? (
+                                  <p className="font-mono font-bold text-purple-400">
+                                    {grade?.improvementExamGrade} / {activity.improvementExamMaxScore || 10}
+                                    <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.examEq10)} / 10)</span>
+                                  </p>
+                                ) : (
+                                  efDetails.requiresWork ? (
+                                    <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
+                                  ) : (
+                                    <p className="text-slate-500 italic">Opcional (No presentado)</p>
+                                  )
+                                )}
+                              </div>
+
+                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                <span className="text-slate-400 block mb-1 font-medium">Promedio Obtenido</span>
+                                <p className="font-mono font-bold text-slate-200">
+                                  {efDetails.calculatedAvg !== null ? `${formatGrade(efDetails.calculatedAvg)} / 10` : '-'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Mensajes explícitos según requerimientos */}
+                            {efDetails.noImprovement && (
+                              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5">
+                                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                                <div className="text-xs text-slate-200 space-y-1">
+                                  <p className="font-bold text-rose-400">
+                                    No hubo mejora de calificación de evaluación final
+                                  </p>
+                                  <p className="text-slate-300 leading-relaxed">
+                                    El nuevo promedio resultante del proceso de mejoramiento ({formatGrade(efDetails.calculatedAvg)}) es menor o igual a la nota original ({formatGrade(efDetails.origEq10)}). 
+                                    Por regla de protección al estudiante, se mantiene la calificación original de <strong className="text-white font-bold">{formatGrade(efDetails.origEq10)}</strong>.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {efDetails.improved && (
+                              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5">
+                                <div className="text-xs text-slate-200 space-y-1">
+                                  <p className="font-bold text-emerald-400">
+                                    ¡Mejora de calificación aplicada!
+                                  </p>
+                                  <p className="text-slate-300 leading-relaxed">
+                                    El proceso de mejoramiento incrementó con éxito su calificación de <span className="line-through text-slate-400">{formatGrade(efDetails.origEq10)}</span> a <strong className="text-emerald-400 font-bold">{formatGrade(efDetails.finalGrade)}</strong>.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {efDetails.isPending && (
+                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
+                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                <div className="text-xs text-amber-200 space-y-1">
+                                  <p className="font-bold text-amber-300">
+                                    Proceso de mejoramiento obligatorio en curso
+                                  </p>
+                                  <p className="text-amber-200/90 leading-relaxed">
+                                    Al tener una calificación inferior a 7.00 en la Evaluación Final, se requiere registrar tanto el trabajo de refuerzo como el examen de mejoramiento para computar su nota definitiva.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {grade?.observation && (
                           <div className="mt-4 pt-3 border-t border-white/5">
                             <p className="text-xs text-slate-500 mb-1 font-semibold uppercase tracking-wider">Observación del Docente:</p>
