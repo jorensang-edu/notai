@@ -120,7 +120,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
 
   const allSubjects: SubjectName[] = [
     'Matemáticas', 'Lengua y Literatura', 'Ciencias Naturales', 'Biología',
-    'Química', 'Física', 'Diplomado', 'Educación Física',
+    'Química', 'Física', 'Diplomado',
     'Indagación', 'Filosofía', 'Patrimonio', 'Ciudadanía', 'Ciencias Sociales', 'Investigación'
   ];
 

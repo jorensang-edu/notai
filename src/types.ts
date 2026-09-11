@@ -3,7 +3,7 @@ export type EvaluationComponent = '1º APORTE' | '2º APORTE' | 'EVALUACIÓN FIN
 
 export type Level = 'Básica Superior' | 'Bachillerato';
 export type CourseName = '8 EGB A' | '8 EGB B' | '9 EGB A' | '9 EGB B' | '10 EGB A' | '10 EGB B' | '1 BACH. A' | '1 BACH. B' | '2 BACH. A' | '2 BACH. B' | '3 BACH. A' | '3 BACH. B';
-export type SubjectName = 'Matemáticas' | 'Lengua y Literatura' | 'Ciencias Naturales' | 'Biología' | 'Química' | 'Física' | 'Diplomado' | 'Educación Física' | 'Indagación' | 'Filosofía' | 'Patrimonio' | 'Ciudadanía' | 'Ciencias Sociales' | 'Investigación';
+export type SubjectName = 'Matemáticas' | 'Lengua y Literatura' | 'Ciencias Naturales' | 'Biología' | 'Química' | 'Física' | 'Diplomado' | 'Indagación' | 'Filosofía' | 'Patrimonio' | 'Ciudadanía' | 'Ciencias Sociales' | 'Investigación';
 
 export interface CourseParams {
   institution: string;

@@ -1,7 +1,7 @@
 export type TeacherPermissions = {
   [code: string]: {
     name: string;
-    permissions: 'all' | { subject: string; courses: string[] }[];
+    permissions: 'all' | 'readonly' | { subject: string; courses: string[] }[];
   }
 };
 
@@ -79,6 +79,6 @@ export const TEACHER_MATRIX: TeacherPermissions = {
   },
   "RWCV9": {
     name: "JONNATHAN GUARACA",
-    permissions: "all"
+    permissions: "readonly"
   }
 };

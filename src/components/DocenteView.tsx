@@ -83,15 +83,19 @@ const [searchQuery, setSearchQuery] = useState('');
     }
     return filtered;
   }, [students, selectedCourse, searchQuery]);
-  const { isUnauthorized, existingTeacherEmail } = useMemo(() => {
+  const { isUnauthorized, isReadOnlyUser, existingTeacherEmail } = useMemo(() => {
     let unauthorized = false;
+    let readOnly = false;
     
     // Check TEACHER_MATRIX logic if a teacherCode is present
     if (teacherCode) {
       const teacherInfo = TEACHER_MATRIX[teacherCode];
       if (teacherInfo) {
-        if (teacherInfo.permissions === 'all') {
-          unauthorized = false; // Code 'RWCV9' gets ALL access
+        if (teacherCode === 'RWCV9' || teacherInfo.permissions === 'readonly') {
+          unauthorized = true;
+          readOnly = true;
+        } else if (teacherInfo.permissions === 'all') {
+          unauthorized = false;
         } else if (Array.isArray(teacherInfo.permissions)) {
           // Check if current course/subject is in the allowed list for this code
           const isAllowed = teacherInfo.permissions.some(p => 
@@ -109,7 +113,7 @@ const [searchQuery, setSearchQuery] = useState('');
       }
     }
     
-    return { isUnauthorized: unauthorized, existingTeacherEmail: undefined };
+    return { isUnauthorized: unauthorized, isReadOnlyUser: readOnly, existingTeacherEmail: undefined };
   }, [selectedCourse, currentSubject, teacherCode]);
 
   const filteredActivities = useMemo(() => {
@@ -166,6 +170,7 @@ const [searchQuery, setSearchQuery] = useState('');
 
   const handleCreateActivity = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUnauthorized) return;
     if (!newActivityName.trim()) return;
     const newAct = await addActivity({ 
       name: newActivityName, 
@@ -196,6 +201,7 @@ const [searchQuery, setSearchQuery] = useState('');
     field: 'original' | 'reinforcement' | 'globalization' | 'observation' | 'improvementWork' | 'improvementExam', 
     value: string
   ) => {
+    if (isUnauthorized) return;
     let numValue: number | null = null;
     if (field !== 'observation') {
       numValue = value === '' ? null : parseFloat(value);
@@ -222,10 +228,12 @@ const [searchQuery, setSearchQuery] = useState('');
   };
 
   const confirmDeleteActivity = (activity: Activity) => {
+    if (isUnauthorized) return;
     setActivityToDelete(activity);
   };
 
   const executeDeleteActivity = () => {
+    if (isUnauthorized) return;
     if (activityToDelete) {
       deleteActivity(activityToDelete.id);
       if (selectedActivityId === activityToDelete.id) {
@@ -441,8 +449,17 @@ const [searchQuery, setSearchQuery] = useState('');
             <span className="font-bold text-xl text-white">N</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">NotAI <span className="text-blue-400 font-medium text-sm ml-2">Panel Docente</span></h1>
-            <p className="text-xs text-slate-400 uppercase tracking-widest">Gestión de Calificaciones</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-tight">NotAI <span className="text-blue-400 font-medium text-sm ml-2">Panel Docente</span></h1>
+              {isReadOnlyUser && (
+                <span className="text-amber-400 text-xs font-semibold px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
+                  Solo Lectura (RWCV9)
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 uppercase tracking-widest">
+              {isReadOnlyUser ? 'Consulta de Calificaciones' : 'Gestión de Calificaciones'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-6">
@@ -483,8 +500,9 @@ const [searchQuery, setSearchQuery] = useState('');
                   type="text"
                   value={courseParams.teacher}
                   onChange={(e) => setCourseParams({ ...courseParams, teacher: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-300"
+                  className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   placeholder="Nombre del docente"
+                  disabled={isUnauthorized}
                 />
               </div>
               <div>
@@ -497,7 +515,7 @@ const [searchQuery, setSearchQuery] = useState('');
                   {(() => {
                     const allSubjectsList: SubjectName[] = [
                       'Matemáticas', 'Lengua y Literatura', 'Ciencias Naturales', 'Biología',
-                      'Química', 'Física', 'Diplomado', 'Educación Física',
+                      'Química', 'Física', 'Diplomado',
                       'Indagación', 'Filosofía', 'Patrimonio', 'Ciudadanía', 'Ciencias Sociales', 'Investigación'
                     ];
                     
@@ -626,7 +644,17 @@ const [searchQuery, setSearchQuery] = useState('');
         </aside>
 
         <section className="flex-1 p-4 md:p-8 flex flex-col gap-6 overflow-hidden">
-          {isUnauthorized && (
+          {isReadOnlyUser ? (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-bold text-amber-400 text-sm">Modo de Solo Lectura (Código RWCV9)</h3>
+                <p className="text-xs text-amber-200/90 mt-1">
+                  Su perfil tiene acceso para consultar las calificaciones de todas las asignaturas registradas. No tiene permisos para registrar o modificar calificaciones ni actividades.
+                </p>
+              </div>
+            </div>
+          ) : isUnauthorized && (
             <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 flex items-start gap-3 shrink-0">
               <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
               <div>
