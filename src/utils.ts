@@ -4,22 +4,24 @@ export function getCurrentFormattedDate(): string {
   return format(new Date(), 'dd/MM/yyyy');
 }
 
-export function convertTo10(grade: number | null, maxScore: number | undefined): number | null {
-  if (grade === null || isNaN(grade)) return null;
-  const max = maxScore && maxScore > 0 ? maxScore : 10;
+export function convertTo10(grade: number | string | null | undefined, maxScore: number | string | undefined): number | null {
+  if (grade === null || grade === undefined || grade === '') return null;
+  const numGrade = typeof grade === 'number' ? grade : parseFloat(String(grade));
+  if (isNaN(numGrade)) return null;
+  const max = maxScore && Number(maxScore) > 0 ? Number(maxScore) : 10;
   if (max === 10) {
     // Ensure we also truncate to 2 decimals if it's already over 10
-    return Math.trunc(grade * 100) / 100;
+    return Math.trunc(numGrade * 100) / 100;
   }
-  const converted = (grade / max) * 10;
+  const converted = (numGrade / max) * 10;
   return Math.trunc(converted * 100) / 100;
 }
 
 export function computeCompositeOriginal(
-  original: number | null, 
-  globalization: number | null | undefined, 
-  maxScore: number | undefined, 
-  globalizationMaxScore: number | undefined,
+  original: number | string | null | undefined, 
+  globalization: number | string | null | undefined, 
+  maxScore: number | string | undefined, 
+  globalizationMaxScore: number | string | undefined,
   isEvalFinal: boolean,
   hasGlobalization?: boolean
 ): number | null {
@@ -45,7 +47,12 @@ export function computeCompositeOriginal(
   return null;
 }
 
-export function calculateFinalGrade(original: number | null, reinforcement: number | null, maxScore?: number, reinforcementMaxScore?: number): number | null {
+export function calculateFinalGrade(
+  original: number | string | null | undefined, 
+  reinforcement: number | string | null | undefined, 
+  maxScore?: number | string, 
+  reinforcementMaxScore?: number | string
+): number | null {
   const orig10 = convertTo10(original, maxScore);
   const ref10 = convertTo10(reinforcement, reinforcementMaxScore || maxScore);
 
@@ -59,9 +66,11 @@ export function calculateFinalGrade(original: number | null, reinforcement: numb
   return (orig10 + ref10) / 2;
 }
 
-export function formatGrade(grade: number | null): string {
-  if (grade === null || isNaN(grade)) return '-';
-  return grade.toFixed(2);
+export function formatGrade(grade: number | string | null | undefined): string {
+  if (grade === null || grade === undefined || grade === '') return '-';
+  const num = typeof grade === 'number' ? grade : parseFloat(String(grade));
+  if (isNaN(num)) return '-';
+  return num.toFixed(2);
 }
 
 import { 
@@ -566,7 +575,7 @@ export function calculateComponentAverage(
   ignoreImprovement = false
 ): number | null {
   const componentActivities = activities.filter(a => 
-    a.trimestre === trimestre && 
+    (a.trimestre === trimestre || (!a.trimestre && trimestre === '1º Trimestre')) && 
     a.component === component &&
     a.course === course &&
     a.subject === subject

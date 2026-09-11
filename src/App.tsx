@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { RoleSelection } from './components/RoleSelection';
 import { DocenteView } from './components/DocenteView';
 import { EstudianteView } from './components/EstudianteView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppStore } from './store';
 import { Role } from './types';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
@@ -57,11 +58,11 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <>
+          <ErrorBoundary onReset={() => { setRole('none'); setTeacherCode(''); }}>
             {role === 'none' && <RoleSelection onSelectRole={(r, code) => { setRole(r); if (code) setTeacherCode(code); }} />}
             {role === 'docente' && <DocenteView store={store} teacherCode={teacherCode} onLogout={() => { setRole('none'); setTeacherCode(''); }} />}
             {role === 'estudiante' && <EstudianteView store={store} onLogout={() => setRole('none')} />}
-          </>
+          </ErrorBoundary>
         )}
       </div>
 

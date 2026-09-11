@@ -15,10 +15,11 @@ import {
   canStudentRegisterImprovement,
   getStudentGlobalImprovementStats
 } from '../utils';
-import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus } from 'lucide-react';
 import { auth } from '../firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface DocenteViewProps {
   onLogout: () => void;
@@ -30,8 +31,21 @@ import { TEACHER_MATRIX } from '../teacherMatrix';
 export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) {
   const { courseParams, setCourseParams, students, activities, grades, addActivity, updateGrade, deleteActivity, updateActivity, classNotes, updateClassNote } = store;
   
-  const [selectedCourse, setSelectedCourse] = useState<CourseName>('3 BACH. B');
-  const [selectedSubject, setSelectedSubject] = useState<SubjectName>('Matemáticas');
+  const initialSelection = useMemo(() => {
+    if (teacherCode) {
+      const teacherInfo = TEACHER_MATRIX[teacherCode];
+      if (teacherInfo && Array.isArray(teacherInfo.permissions) && teacherInfo.permissions.length > 0) {
+        return {
+          subject: teacherInfo.permissions[0].subject as SubjectName,
+          course: teacherInfo.permissions[0].courses[0] as CourseName
+        };
+      }
+    }
+    return { subject: 'Matemáticas' as SubjectName, course: '3 BACH. B' as CourseName };
+  }, [teacherCode]);
+
+  const [selectedCourse, setSelectedCourse] = useState<CourseName>(initialSelection.course);
+  const [selectedSubject, setSelectedSubject] = useState<SubjectName>(initialSelection.subject);
   
   const isBasica = selectedCourse.includes('EGB');
   const currentSubject = selectedSubject;
@@ -108,8 +122,9 @@ const [searchQuery, setSearchQuery] = useState('');
           unauthorized = true;
         }
       } else {
-        // Unknown code -> unauthorized for everything
-        unauthorized = true;
+        // Teacher code is authenticated but not specifically restricted in TEACHER_MATRIX: allow standard docente access
+        unauthorized = false;
+        readOnly = false;
       }
     }
     
@@ -418,7 +433,7 @@ const [searchQuery, setSearchQuery] = useState('');
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Matriz_Calificaciones');
 
     // Construir el nombre del archivo basado en los filtros
-    const nameParts = [currentSubject, selectedCourse, courseParams.trimestre];
+    const nameParts: string[] = [currentSubject, selectedCourse, courseParams.trimestre];
     if (selectedComponent !== 'ALL') {
       nameParts.push(selectedComponent);
     }
@@ -509,7 +524,20 @@ const [searchQuery, setSearchQuery] = useState('');
                 <label className="block text-[11px] sm:text-xs text-slate-500 uppercase">Asignatura</label>
                 <select
                   value={currentSubject}
-                  onChange={(e) => setSelectedSubject(e.target.value as SubjectName)}
+                  onChange={(e) => {
+                    const newSub = e.target.value as SubjectName;
+                    setSelectedSubject(newSub);
+                    setSelectedActivityId('ALL');
+                    if (teacherCode) {
+                      const teacherInfo = TEACHER_MATRIX[teacherCode];
+                      if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
+                        const permittedSub = teacherInfo.permissions.find(p => p.subject === newSub);
+                        if (permittedSub && !permittedSub.courses.includes(selectedCourse)) {
+                          setSelectedCourse(permittedSub.courses[0] as CourseName);
+                        }
+                      }
+                    }
+                  }}
                   className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-200"
                 >
                   {(() => {
@@ -541,7 +569,6 @@ const [searchQuery, setSearchQuery] = useState('');
                   onChange={(e) => {
                     setSelectedCourse(e.target.value as CourseName);
                     setSelectedActivityId('ALL');
-                    setActiveView('registro');
                     setIsMobileMenuOpen(false);
                   }}
                   className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-200"
@@ -712,187 +739,217 @@ const [searchQuery, setSearchQuery] = useState('');
               </div>
             </div>
           ) : activeView === 'matriz' ? (
-            <div className="flex-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden flex flex-col">
-              <div className="px-4 py-3 md:px-6 md:py-4 bg-white/5 border-b border-white/10 flex justify-between items-center shrink-0">
-                <h2 className="font-bold flex items-center gap-2 text-lg">
-                  Matriz de Calificaciones
-                  <span className="text-blue-400 font-medium ml-2">{selectedCourse}</span>
-                  <span className="text-slate-400 font-medium text-sm ml-2">({currentSubject})</span>
-                </h2>
-                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                  <button
-                    onClick={handleExportConsolidatedExcel}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/20"
-                    title="Descargar consolidado de todos los trimestres"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">Consolidado</span>
-                  </button>
-                  <button
-                    onClick={handleExportExcel}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-emerald-600/20"
-                    title="Descargar vista actual"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Descargar Aporte</span>
-                  </button>
+            <ErrorBoundary 
+              fallbackTitle="Error al visualizar la Matriz de Calificaciones" 
+              fallbackMessage="Ocurrió un inconveniente al renderizar la matriz de calificaciones. Puede intentar recargar o volver a la vista de registro."
+              onReset={() => setActiveView('registro')}
+            >
+              <div className="flex-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+                <div className="px-4 py-3 md:px-6 md:py-4 bg-white/5 border-b border-white/10 flex justify-between items-center shrink-0">
+                  <h2 className="font-bold flex items-center gap-2 text-lg">
+                    Matriz de Calificaciones
+                    <span className="text-blue-400 font-medium ml-2">{selectedCourse}</span>
+                    <span className="text-slate-400 font-medium text-sm ml-2">({currentSubject})</span>
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={handleExportConsolidatedExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/20"
+                      title="Descargar consolidado de todos los trimestres"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span className="hidden sm:inline">Consolidado</span>
+                    </button>
+                    <button
+                      onClick={handleExportExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-emerald-600/20"
+                      title="Descargar vista actual"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar Aporte</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1 overflow-auto">
-                <table className="w-full text-left border-collapse min-w-max">
-                  <thead className="bg-[#0f172a] text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 sticky top-0 z-30 shadow-md">
-                    <tr>
-                      <th className="px-3 py-2 md:px-4 md:py-3 font-semibold border-b border-r border-white/5 bg-[#0f172a] sticky left-0 z-40">Estudiante</th>
-                      {filteredActivities.map(activity => (
-                        <th key={activity.id} className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[120px] relative group/th">
-                          <div className="truncate px-4" title={activity.name}>{activity.name}</div>
-                          {activity.date && <div className="text-[9px] text-amber-400/80 font-mono mt-0.5">{activity.date}</div>}
-                          <div className="text-[9px] text-blue-400 font-mono mt-0.5" title="Calificación máxima">10</div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              confirmDeleteActivity(activity);
-                            }}
-                            disabled={isUnauthorized}
-                            className="absolute top-1/2 -translate-y-1/2 right-1 p-1.5 opacity-100 md:opacity-0 md:group-hover/th:opacity-100 text-rose-400 hover:bg-rose-500/20 rounded transition-all z-10 cursor-pointer"
-                            title="Eliminar actividad"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+
+                {filteredActivities.length === 0 && (
+                  <div className="m-4 md:m-6 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <Info className="w-5 h-5 text-blue-400 shrink-0" />
+                      <div className="text-xs text-blue-200">
+                        <span className="font-semibold">Sin actividades registradas:</span> No hay actividades creadas en <b>{currentSubject}</b> para <b>{selectedCourse}</b> ({courseParams.trimestre}). Las calificaciones registradas en la vista de Registro aparecerán aquí consolidadas.
+                      </div>
+                    </div>
+                    {!isUnauthorized && (
+                      <button
+                        onClick={() => {
+                          setActiveView('registro');
+                          setIsCreatingActivity(true);
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5 shadow-md shadow-blue-600/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Nueva Actividad
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-auto">
+                  <table className="w-full text-left border-collapse min-w-max">
+                    <thead className="bg-[#0f172a] text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 sticky top-0 z-30 shadow-md">
+                      <tr>
+                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold border-b border-r border-white/5 bg-[#0f172a] sticky left-0 z-40">Estudiante</th>
+                        {filteredActivities.map(activity => (
+                          <th key={activity.id} className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[120px] relative group/th">
+                            <div className="truncate px-4" title={activity.name}>{activity.name}</div>
+                            {activity.date && <div className="text-[9px] text-amber-400/80 font-mono mt-0.5">{activity.date}</div>}
+                            <div className="text-[9px] text-blue-400 font-mono mt-0.5" title="Calificación máxima">10</div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteActivity(activity);
+                              }}
+                              disabled={isUnauthorized}
+                              className="absolute top-1/2 -translate-y-1/2 right-1 p-1.5 opacity-100 md:opacity-0 md:group-hover/th:opacity-100 text-rose-400 hover:bg-rose-500/20 rounded transition-all z-10 cursor-pointer"
+                              title="Eliminar actividad"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </th>
+                        ))}
+                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-[90px] z-20">
+                          Total Ref. Global<br/>
+                          <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
                         </th>
-                      ))}
-                      <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-[90px] z-20">
-                        Total Ref. Global<br/>
-                        <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
-                      </th>
-                      <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20">Promedio {selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-sm">
-                    {filteredStudents.map(student => {
-                      const studentActivitiesData = filteredActivities.map(a => {
-                        const grade = getGradeRecord(student.id, a.id);
-                        const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
-                        const refEq10 = convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
-                        return { activity: a, grade, finalGrade, origEq10, refEq10, efDetails };
-                      });
+                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20">Promedio {selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-sm">
+                      {filteredStudents.map(student => {
+                        const studentActivitiesData = filteredActivities.map(a => {
+                          const grade = getGradeRecord(student.id, a.id);
+                          const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(a, grade);
+                          const refEq10 = convertTo10(grade?.reinforcementGrade ?? null, a.reinforcementMaxScore || a.maxScore);
+                          return { activity: a, grade, finalGrade, origEq10, refEq10, efDetails };
+                        });
 
-                      const totalReinforcements = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
+                        const totalReinforcements = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
 
-                      const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
-                      let avg = null;
-                      if (selectedComponent === 'ALL') {
-                        avg = calculateTrimestralAverage(student.id, activities, grades, courseParams.trimestre, selectedCourse, currentSubject);
-                      } else {
-                        avg = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, selectedComponent as any, selectedCourse, currentSubject);
-                      }
+                        const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
+                        let avg = null;
+                        if (selectedComponent === 'ALL') {
+                          avg = calculateTrimestralAverage(student.id, activities, grades, courseParams.trimestre, selectedCourse, currentSubject);
+                        } else {
+                          avg = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, selectedComponent as any, selectedCourse, currentSubject);
+                        }
 
-                      return (
-                        <tr key={student.id} className="hover:bg-white/5 transition-colors group">
-                          <td className="px-3 py-2 md:px-4 md:py-3 border-r border-white/5 bg-[#0f172a] group-hover:bg-[#162032] sticky left-0 z-10 transition-colors">
-                            <div className="font-bold text-slate-200 text-xs truncate max-w-[200px]" title={student.name}>{student.name}</div>
-                            <div className="text-[11px] sm:text-xs text-slate-500 font-mono mt-0.5">{student.code}</div>
-                          </td>
-                          {studentActivitiesData.map(data => {
-                            const isRequiringReinforcement = data.finalGrade !== null && data.finalGrade < 7;
-                            const isEvalFinal = data.activity.component === 'EVALUACIÓN FINAL';
-                            return (
-                              <td key={data.activity.id} className={`px-3 py-2 md:px-4 md:py-3 text-center border-white/5 ${isRequiringReinforcement ? 'bg-amber-500/5' : ''}`}>
-                                {data.origEq10 !== null ? (
-                                  <div className="flex flex-col items-center justify-center">
-                                    {isEvalFinal ? (
-                                      <>
-                                        {data.efDetails?.noImprovement ? (
-                                          <>
+                        return (
+                          <tr key={student.id} className="hover:bg-white/5 transition-colors group">
+                            <td className="px-3 py-2 md:px-4 md:py-3 border-r border-white/5 bg-[#0f172a] group-hover:bg-[#162032] sticky left-0 z-10 transition-colors">
+                              <div className="font-bold text-slate-200 text-xs truncate max-w-[200px]" title={student.name}>{student.name}</div>
+                              <div className="text-[11px] sm:text-xs text-slate-500 font-mono mt-0.5">{student.code}</div>
+                            </td>
+                            {studentActivitiesData.map(data => {
+                              const isRequiringReinforcement = data.finalGrade !== null && data.finalGrade < 7;
+                              const isEvalFinal = data.activity.component === 'EVALUACIÓN FINAL';
+                              return (
+                                <td key={data.activity.id} className={`px-3 py-2 md:px-4 md:py-3 text-center border-white/5 ${isRequiringReinforcement ? 'bg-amber-500/5' : ''}`}>
+                                  {data.origEq10 !== null ? (
+                                    <div className="flex flex-col items-center justify-center">
+                                      {isEvalFinal ? (
+                                        <>
+                                          {data.efDetails?.noImprovement ? (
+                                            <>
+                                              <span className="font-semibold text-slate-300">
+                                                {formatGrade(data.origEq10)}
+                                              </span>
+                                              <span 
+                                                className="text-[9px] text-rose-400 font-medium mt-0.5 bg-rose-500/10 border border-rose-500/20 px-1 rounded cursor-help"
+                                                title={`No hubo mejora: Promedio mejoramiento (${formatGrade(data.efDetails.calculatedAvg)}) < Original (${formatGrade(data.efDetails.origEq10)}). Se mantiene nota original.`}
+                                              >
+                                                Sin mejora ({formatGrade(data.efDetails.calculatedAvg)})
+                                              </span>
+                                            </>
+                                          ) : data.efDetails?.improved ? (
+                                            <>
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-[11px] text-slate-500 line-through">
+                                                  {formatGrade(data.efDetails.origEq10)}
+                                                </span>
+                                                <span className="font-bold text-emerald-400 text-sm">
+                                                  {formatGrade(data.efDetails.finalGrade)}
+                                                </span>
+                                              </div>
+                                              <span 
+                                                className="text-[9px] text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded cursor-help"
+                                                title={`Mejora registrada: Trabajo=${data.efDetails.workEq10 ?? '-'}, Examen=${data.efDetails.examEq10 ?? '-'}`}
+                                              >
+                                                ▲ Mejora
+                                              </span>
+                                            </>
+                                          ) : data.efDetails?.isPending ? (
+                                            <>
+                                              <span className="font-semibold text-amber-400">
+                                                {formatGrade(data.origEq10)}
+                                              </span>
+                                              <span 
+                                                className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
+                                                title="Requiere Trabajo de Refuerzo y Examen de Mejoramiento"
+                                              >
+                                                Mej. Pend.
+                                              </span>
+                                            </>
+                                          ) : (
                                             <span className="font-semibold text-slate-300">
                                               {formatGrade(data.origEq10)}
                                             </span>
-                                            <span 
-                                              className="text-[9px] text-rose-400 font-medium mt-0.5 bg-rose-500/10 border border-rose-500/20 px-1 rounded cursor-help"
-                                              title={`No hubo mejora: Promedio mejoramiento (${formatGrade(data.efDetails.calculatedAvg)}) < Original (${formatGrade(data.efDetails.origEq10)}). Se mantiene nota original.`}
-                                            >
-                                              Sin mejora ({formatGrade(data.efDetails.calculatedAvg)})
-                                            </span>
-                                          </>
-                                        ) : data.efDetails?.improved ? (
-                                          <>
-                                            <div className="flex items-center gap-1">
-                                              <span className="text-[11px] text-slate-500 line-through">
-                                                {formatGrade(data.efDetails.origEq10)}
-                                              </span>
-                                              <span className="font-bold text-emerald-400 text-sm">
-                                                {formatGrade(data.efDetails.finalGrade)}
-                                              </span>
-                                            </div>
-                                            <span 
-                                              className="text-[9px] text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded cursor-help"
-                                              title={`Mejora registrada: Trabajo=${data.efDetails.workEq10 ?? '-'}, Examen=${data.efDetails.examEq10 ?? '-'}`}
-                                            >
-                                              ▲ Mejora
-                                            </span>
-                                          </>
-                                        ) : data.efDetails?.isPending ? (
-                                          <>
-                                            <span className="font-semibold text-amber-400">
-                                              {formatGrade(data.origEq10)}
-                                            </span>
-                                            <span 
-                                              className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
-                                              title="Requiere Trabajo de Refuerzo y Examen de Mejoramiento"
-                                            >
-                                              Mej. Pend.
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <span className="font-semibold text-slate-300">
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className={`font-semibold ${isRequiringReinforcement && data.grade?.reinforcementGrade == null ? 'text-amber-500' : 'text-slate-300'}`}>
                                             {formatGrade(data.origEq10)}
                                           </span>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className={`font-semibold ${isRequiringReinforcement && data.grade?.reinforcementGrade == null ? 'text-amber-500' : 'text-slate-300'}`}>
-                                          {formatGrade(data.origEq10)}
-                                        </span>
-                                        {data.refEq10 !== null && (
-                                          <span className="text-[11px] sm:text-xs text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 px-1.5 rounded">
-                                            R: {formatGrade(data.refEq10)}
-                                          </span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-600">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-[90px] z-10 transition-colors">
-                            <span className="font-bold text-base text-blue-400">
-                              {totalReinforcements}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
-                            <span className={`font-bold text-base ${avg !== null && avg < 7 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                              {formatGrade(avg)}
-                            </span>
+                                          {data.refEq10 !== null && (
+                                            <span className="text-[11px] sm:text-xs text-emerald-400 font-medium mt-0.5 bg-emerald-500/10 px-1.5 rounded">
+                                              R: {formatGrade(data.refEq10)}
+                                            </span>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-600">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-[90px] z-10 transition-colors">
+                              <span className="font-bold text-base text-blue-400">
+                                {totalReinforcements}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
+                              <span className={`font-bold text-base ${avg !== null && avg < 7 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                {formatGrade(avg)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredStudents.length === 0 && (
+                        <tr>
+                          <td colSpan={filteredActivities.length + 3} className="px-6 py-12 text-center text-slate-500 italic">
+                            No hay estudiantes registrados.
                           </td>
                         </tr>
-                      );
-                    })}
-                    {filteredStudents.length === 0 && (
-                      <tr>
-                        <td colSpan={filteredActivities.length + 3} className="px-6 py-12 text-center text-slate-500 italic">
-                          No hay estudiantes registrados.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
           ) : (
             <div className="flex-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden flex flex-col">
             <div className="px-4 py-3 md:px-6 md:py-4 bg-white/5 border-b border-white/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
