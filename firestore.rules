@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCourseParams(data) {
+      return data.keys().hasAll(['institution', 'period', 'trimestre', 'teacher'])
+        && data.institution is string && data.institution.size() <= 200
+        && data.period is string && data.period.size() <= 50
+        && data.trimestre is string && data.trimestre in ['1º Trimestre', '2º Trimestre', '3º Trimestre']
+        && data.teacher is string && data.teacher.size() <= 100
+        && data.keys().size() == 4;
+    }
+
+    function isValidCourseParamsUpdate(data) {
+      return (!('institution' in data) || (data.institution is string && data.institution.size() <= 200))
+        && (!('period' in data) || (data.period is string && data.period.size() <= 50))
+        && (!('trimestre' in data) || (data.trimestre is string && data.trimestre in ['1º Trimestre', '2º Trimestre', '3º Trimestre']))
+        && (!('teacher' in data) || (data.teacher is string && data.teacher.size() <= 100));
+    }
+
+    function isValidActivity(data) {
+      return data.keys().hasAll(['name', 'component', 'date', 'course', 'subject', 'createdAt'])
+        && data.name is string && data.name.size() <= 150
+        && data.component is string && data.component in ['1º APORTE', '2º APORTE', 'EVALUACIÓN FINAL', 'SUPLETORIO', 'MEJORAMIENTO']
+        && data.date is string && data.date.size() <= 20
+        && data.course is string && data.course.size() <= 50
+        && data.subject is string && data.subject.size() <= 50
+        && data.createdAt is number
+        && (!('trimestre' in data) || (data.trimestre is string && data.trimestre.size() <= 50))
+        && (!('maxScore' in data) || data.maxScore is number)
+        && (!('reinforcementMaxScore' in data) || data.reinforcementMaxScore is number)
+        && (!('globalizationMaxScore' in data) || data.globalizationMaxScore is number)
+        && (!('hasGlobalization' in data) || data.hasGlobalization is bool)
+        && data.keys().size() <= 11;
+    }
+
+    function isValidActivityUpdate(data) {
+      return (!('name' in data) || (data.name is string && data.name.size() <= 150))
+        && (!('component' in data) || (data.component is string && data.component in ['1º APORTE', '2º APORTE', 'EVALUACIÓN FINAL', 'SUPLETORIO', 'MEJORAMIENTO']))
+        && (!('date' in data) || (data.date is string && data.date.size() <= 20))
+        && (!('course' in data) || (data.course is string && data.course.size() <= 50))
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 50))
+        && (!('createdAt' in data) || data.createdAt is number)
+        && (!('trimestre' in data) || (data.trimestre is string && data.trimestre.size() <= 50))
+        && (!('maxScore' in data) || data.maxScore is number)
+        && (!('reinforcementMaxScore' in data) || data.reinforcementMaxScore is number)
+        && (!('globalizationMaxScore' in data) || data.globalizationMaxScore is number)
+        && (!('hasGlobalization' in data) || data.hasGlobalization is bool);
+    }
+
+    function isValidGrade(data) {
+      return data.keys().hasAll(['studentId', 'activityId', 'lastUpdated'])
+        && data.studentId is string && data.studentId.size() <= 100
+        && data.activityId is string && data.activityId.size() <= 100
+        && data.lastUpdated is string && data.lastUpdated.size() <= 20
+        && (!('originalGrade' in data) || data.originalGrade == null || data.originalGrade is number)
+        && (!('globalizationGrade' in data) || data.globalizationGrade == null || data.globalizationGrade is number)
+        && (!('reinforcementGrade' in data) || data.reinforcementGrade == null || data.reinforcementGrade is number)
+        && (!('observation' in data) || data.observation is string && data.observation.size() <= 500)
+        && (!('reinforcementDate' in data) || data.reinforcementDate == null || (data.reinforcementDate is string && data.reinforcementDate.size() <= 20))
+        && data.keys().size() <= 8;
+    }
+
+    function isValidGradeUpdate(data) {
+      return (!('studentId' in data) || (data.studentId is string && data.studentId.size() <= 100))
+        && (!('activityId' in data) || (data.activityId is string && data.activityId.size() <= 100))
+        && (!('lastUpdated' in data) || (data.lastUpdated is string && data.lastUpdated.size() <= 20))
+        && (!('originalGrade' in data) || data.originalGrade == null || data.originalGrade is number)
+        && (!('globalizationGrade' in data) || data.globalizationGrade == null || data.globalizationGrade is number)
+        && (!('reinforcementGrade' in data) || data.reinforcementGrade == null || data.reinforcementGrade is number)
+        && (!('observation' in data) || (data.observation is string && data.observation.size() <= 500))
+        && (!('reinforcementDate' in data) || data.reinforcementDate == null || (data.reinforcementDate is string && data.reinforcementDate.size() <= 20));
+    }
+
+    function isValidClassNote(data) {
+      return data.keys().hasAll(['course', 'subject', 'text', 'lastUpdated'])
+        && data.course is string && data.course.size() <= 50
+        && data.subject is string && data.subject.size() <= 50
+        && data.text is string && data.text.size() <= 5000
+        && data.lastUpdated is string && data.lastUpdated.size() <= 20
+        && data.keys().size() == 4;
+    }
+
+    function isValidClassNoteUpdate(data) {
+      return (!('course' in data) || (data.course is string && data.course.size() <= 50))
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 50))
+        && (!('text' in data) || (data.text is string && data.text.size() <= 5000))
+        && (!('lastUpdated' in data) || (data.lastUpdated is string && data.lastUpdated.size() <= 20));
+    }
+
+    match /courseParams/{paramId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(paramId) && isValidCourseParams(incoming());
+      allow update: if isSignedIn() && isValidId(paramId) && isValidCourseParamsUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['institution', 'period', 'trimestre', 'teacher']);
+    }
+
+    match /activities/{activityId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && isValidId(activityId);
+      allow delete: if isSignedIn() && isValidId(activityId);
+      allow create: if isSignedIn() && isValidId(activityId) && isValidActivity(incoming());
+      allow update: if isSignedIn() && isValidId(activityId) && isValidActivityUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'component', 'date', 'course', 'subject', 'trimestre',
+          'maxScore', 'reinforcementMaxScore', 'globalizationMaxScore', 'hasGlobalization', 'createdAt'
+        ]);
+    }
+
+    match /grades/{gradeId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && isValidId(gradeId);
+      allow delete: if isSignedIn() && isValidId(gradeId);
+      allow create: if isSignedIn() && isValidId(gradeId) && isValidGrade(incoming());
+      allow update: if isSignedIn() && isValidId(gradeId) && isValidGradeUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'studentId', 'activityId', 'originalGrade', 'globalizationGrade',
+          'reinforcementGrade', 'observation', 'reinforcementDate', 'lastUpdated'
+        ]);
+    }
+
+    match /classNotes/{noteId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && isValidId(noteId);
+      allow delete: if isSignedIn() && isValidId(noteId);
+      allow create: if isSignedIn() && isValidId(noteId) && isValidClassNote(incoming());
+      allow update: if isSignedIn() && isValidId(noteId) && isValidClassNoteUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['course', 'subject', 'text', 'lastUpdated']);
+    }
+  }
+}

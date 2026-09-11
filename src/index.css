@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+body, html {
+  height: 100%;
+  margin: 0;
+  background-color: #020617;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* High Contrast Mode Overrides (Accessibility) */
+.high-contrast-mode body,
+.high-contrast-mode #root,
+.high-contrast-mode .min-h-screen,
+.high-contrast-mode main,
+.high-contrast-mode aside,
+.high-contrast-mode div {
+  background-color: #ffffff !important;
+  border-color: #000000 !important;
+}
+
+.high-contrast-mode * {
+  color: #000000 !important;
+}
+
+/* Background effects and gradients should be hidden or solid */
+.high-contrast-mode .blur-\[120px\],
+.high-contrast-mode .blur-\[80px\] {
+  display: none !important;
+}
+
+/* Borders for all containers for structure */
+.high-contrast-mode section,
+.high-contrast-mode header,
+.high-contrast-mode aside,
+.high-contrast-mode table,
+.high-contrast-mode th,
+.high-contrast-mode td {
+  border: 1px solid #000000 !important;
+}
+
+/* Inputs, Selects, Buttons */
+.high-contrast-mode input,
+.high-contrast-mode select,
+.high-contrast-mode button {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+}
+
+.high-contrast-mode input:focus,
+.high-contrast-mode select:focus,
+.high-contrast-mode button:focus {
+  outline: 4px solid #000000 !important;
+  outline-offset: 2px !important;
+}
+
+.high-contrast-mode svg {
+  color: #000000 !important;
+  stroke: #000000 !important;
+}
+
+/* Placeholder */
+.high-contrast-mode ::placeholder {
+  color: #333333 !important;
+  opacity: 1 !important;
+}
+

@@ -1,0 +1,8 @@
+{
+  "name": "NotAI v2",
+  "description": "NotAI - Sistema de Registro y Consulta de Calificaciones Académicas",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "CourseParams": {
+      "title": "CourseParams",
+      "description": "Global parameters for the course.",
+      "type": "object",
+      "properties": {
+        "institution": { "type": "string", "maxLength": 200 },
+        "period": { "type": "string", "maxLength": 50 },
+        "trimestre": { "type": "string", "enum": ["1º Trimestre", "2º Trimestre", "3º Trimestre"] },
+        "teacher": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["institution", "period", "trimestre", "teacher"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "An academic activity/evaluation.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 150 },
+        "component": { "type": "string", "enum": ["1º APORTE", "2º APORTE", "EVALUACIÓN FINAL", "SUPLETORIO", "MEJORAMIENTO"] },
+        "date": { "type": "string", "maxLength": 20 },
+        "course": { "type": "string", "maxLength": 50 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "trimestre": { "type": "string", "maxLength": 50 },
+        "maxScore": { "type": "number" },
+        "reinforcementMaxScore": { "type": "number" },
+        "globalizationMaxScore": { "type": "number" },
+        "hasGlobalization": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "component", "date", "course", "subject", "createdAt"]
+    },
+    "Grade": {
+      "title": "Grade",
+      "description": "A student's grade for an activity.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "maxLength": 100 },
+        "activityId": { "type": "string", "maxLength": 100 },
+        "originalGrade": { "type": "number" },
+        "globalizationGrade": { "type": "number" },
+        "reinforcementGrade": { "type": "number" },
+        "observation": { "type": "string", "maxLength": 500 },
+        "reinforcementDate": { "type": "string", "maxLength": 20 },
+        "lastUpdated": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["studentId", "activityId", "lastUpdated"]
+    },
+    "ClassNote": {
+      "title": "ClassNote",
+      "description": "Notes for a specific class.",
+      "type": "object",
+      "properties": {
+        "course": { "type": "string", "maxLength": 50 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "text": { "type": "string", "maxLength": 5000 },
+        "lastUpdated": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["course", "subject", "text", "lastUpdated"]
+    }
+  },
+  "firestore": {
+    "courseParams/{paramId}": {
+      "schema": { "$ref": "#/entities/CourseParams" },
+      "description": "Global course settings. Only 'default' is typically used."
+    },
+    "activities/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "Stores activities/evaluations."
+    },
+    "grades/{gradeId}": {
+      "schema": { "$ref": "#/entities/Grade" },
+      "description": "Stores grades for activities by students."
+    },
+    "classNotes/{noteId}": {
+      "schema": { "$ref": "#/entities/ClassNote" },
+      "description": "Stores notes for classes."
+    }
+  }
+}
