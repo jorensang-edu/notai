@@ -7,16 +7,18 @@ import React, { useState, useEffect } from 'react';
 import { RoleSelection } from './components/RoleSelection';
 import { DocenteView } from './components/DocenteView';
 import { EstudianteView } from './components/EstudianteView';
+import { TutoriaView } from './components/TutoriaView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppStore } from './store';
 import { Role } from './types';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 import { auth, signInWithGoogle } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
 export default function App() {
   const [role, setRole] = useState<Role>('none');
   const [teacherCode, setTeacherCode] = useState<string>('');
+  const [tutorCode, setTutorCode] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const store = useAppStore();
@@ -44,24 +46,69 @@ export default function App() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
           </div>
         ) : !user ? (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="bg-slate-900/50 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center">
-              <h2 className="text-2xl font-bold mb-4">Bienvenido a NotAI</h2>
-              <p className="text-slate-400 mb-8">Por favor, inicia sesión para continuar</p>
+          <div className="flex flex-1 items-center justify-center p-4">
+            <div className="bg-slate-900/70 p-8 rounded-3xl border border-slate-700/80 max-w-md w-full text-center shadow-2xl backdrop-blur-xl">
+              <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-500/30">
+                <ShieldCheck className="w-9 h-9 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Portal Académico NotAI</h2>
+              <p className="text-slate-400 text-xs mb-6 leading-relaxed">
+                Acceso unificado y seguro mediante cuentas institucionales de Google
+              </p>
+
+              <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/80 text-left text-xs text-slate-300 space-y-2 mb-6">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                  <span>Docentes y Tutores:</span>
+                  <code className="text-blue-300 font-mono">@cedfi.edu.ec</code>
+                </p>
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>Estudiantes:</span>
+                  <code className="text-emerald-300 font-mono">@stu.cedfi.edu.ec</code>
+                </p>
+              </div>
+
               <button
                 onClick={signInWithGoogle}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+                className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-blue-500/30 text-sm"
               >
                 <LogIn className="w-5 h-5" />
-                Continuar con Google
+                Continuar con Google Institucional
               </button>
             </div>
           </div>
         ) : (
-          <ErrorBoundary onReset={() => { setRole('none'); setTeacherCode(''); }}>
-            {role === 'none' && <RoleSelection onSelectRole={(r, code) => { setRole(r); if (code) setTeacherCode(code); }} />}
-            {role === 'docente' && <DocenteView store={store} teacherCode={teacherCode} onLogout={() => { setRole('none'); setTeacherCode(''); }} />}
-            {role === 'estudiante' && <EstudianteView store={store} onLogout={() => setRole('none')} />}
+          <ErrorBoundary onReset={() => { setRole('none'); setTeacherCode(''); setTutorCode(''); }}>
+            {role === 'none' && (
+              <RoleSelection 
+                onSelectRole={(r, code) => { 
+                  setRole(r); 
+                  if (r === 'docente' && code) setTeacherCode(code); 
+                  if (r === 'tutor' && code) setTutorCode(code);
+                }} 
+              />
+            )}
+            {role === 'docente' && (
+              <DocenteView 
+                store={store} 
+                teacherCode={teacherCode} 
+                onLogout={() => { setRole('none'); setTeacherCode(''); }} 
+              />
+            )}
+            {role === 'tutor' && (
+              <TutoriaView 
+                store={store} 
+                tutorCode={tutorCode} 
+                onLogout={() => { setRole('none'); setTutorCode(''); }} 
+              />
+            )}
+            {role === 'estudiante' && (
+              <EstudianteView 
+                store={store} 
+                onLogout={() => setRole('none')} 
+              />
+            )}
           </ErrorBoundary>
         )}
       </div>
@@ -78,4 +125,5 @@ export default function App() {
     </div>
   );
 }
+
 

@@ -123,5 +123,5 @@ export interface ClassNote {
   lastUpdated: string;
 }
 
-export type Role = 'none' | 'docente' | 'estudiante';
+export type Role = 'none' | 'docente' | 'estudiante' | 'tutor';
 

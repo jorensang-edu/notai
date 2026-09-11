@@ -12,7 +12,9 @@ import {
   countStudentReinforcementsForSubject,
   getStudentGlobalImprovementStats
 } from '../utils';
-import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download } from 'lucide-react';
+import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download, CheckCircle2 } from 'lucide-react';
+import { auth } from '../firebase';
+import { validateEmailForRole, checkCodeBinding, saveCodeBinding, getEmailDomainType } from '../authUtils';
 
 interface EstudianteViewProps {
   onLogout: () => void;
@@ -22,6 +24,10 @@ interface EstudianteViewProps {
 export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
   const { students, activities, grades, courseParams } = store;
   
+  const currentUser = auth.currentUser;
+  const userEmail = currentUser?.email || '';
+  const domainType = getEmailDomainType(userEmail);
+
   const [inputCode, setInputCode] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<Level>('Básica Superior');
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
@@ -33,16 +39,35 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const student = students.find(s => s.code === inputCode.trim() && s.level === selectedLevel);
-    
-    if (student) {
-      setCurrentStudent(student);
-      setError('');
-      // Default to Matemáticas upon successful login
-      setSelectedSubject('Matemáticas');
-    } else {
-      setError(`No se encontró un estudiante con ese código en el nivel ${selectedLevel}.`);
+    const cleanCode = inputCode.trim();
+
+    // 1. Verify institutional email domain
+    const emailVal = validateEmailForRole(userEmail, 'estudiante');
+    if (!emailVal.isValid) {
+      setError(emailVal.errorMessage || 'Acceso restringido: Se requiere una cuenta @stu.cedfi.edu.ec.');
+      return;
     }
+
+    // 2. Find student
+    const student = students.find(s => s.code === cleanCode && s.level === selectedLevel);
+    if (!student) {
+      setError(`No se encontró un estudiante con el código ${cleanCode} en el nivel ${selectedLevel}.`);
+      return;
+    }
+
+    // 3. Verify account-to-code binding
+    const bindingCheck = checkCodeBinding(userEmail, cleanCode, 'estudiante');
+    if (!bindingCheck.allowed) {
+      setError(bindingCheck.message || 'Este código ya está vinculado a otra cuenta institucional.');
+      return;
+    }
+
+    // 4. Save binding to lock this student profile to this Google account
+    saveCodeBinding(userEmail, cleanCode, 'estudiante');
+    setCurrentStudent(student);
+    setError('');
+    // Default to Matemáticas upon successful login
+    setSelectedSubject('Matemáticas');
   };
 
   const studentData = useMemo(() => {
@@ -158,9 +183,16 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
              </button>
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Portal Estudiante</h2>
-          <p className="text-slate-400 mb-8 text-sm">
+          <p className="text-slate-400 mb-4 text-sm">
             Seleccione su nivel e ingrese su código único para acceder al boletín.
           </p>
+
+          {userEmail && (
+            <div className="mb-6 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs">
+              <span className="text-slate-400">Cuenta activa:</span>
+              <span className="font-mono font-semibold text-emerald-300 truncate max-w-[200px]">{userEmail}</span>
+            </div>
+          )}
           
           <form onSubmit={handleLogin}>
             <div className="mb-4">
