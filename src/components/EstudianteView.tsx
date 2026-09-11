@@ -9,7 +9,8 @@ import {
   calculateTrimestralAverage, 
   calculateAnnualAverage,
   computeActivityFinalGrade,
-  countStudentReinforcementsForSubject
+  countStudentReinforcementsForSubject,
+  getStudentGlobalImprovementStats
 } from '../utils';
 import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download } from 'lucide-react';
 
@@ -135,6 +136,10 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
     });
   }, [currentStudent, activities, grades, selectedTrimestre, courseParams]);
 
+  const globalImprovementStats = useMemo(() => {
+    if (!currentStudent) return null;
+    return getStudentGlobalImprovementStats(currentStudent.id, activities, grades, currentStudent.course);
+  }, [currentStudent, activities, grades]);
 
   const today = getCurrentFormattedDate();
 
@@ -321,6 +326,196 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
             </div>
           </div>
 
+          {/* Panel de Mejoramientos Globales (Todas las Asignaturas en el Año Lectivo) */}
+          {globalImprovementStats && (
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-5 rounded-2xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5 text-purple-400" />
+                    Panel de Mejoramientos Globales (Año Lectivo)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Límites consolidados en todas las asignaturas para procesos de mejoramiento
+                  </p>
+                </div>
+                <span className="text-[11px] font-mono text-purple-300/90 bg-purple-500/10 border border-purple-500/20 px-2.5 py-1 rounded-full self-start sm:self-auto">
+                  Control Normativo Anual
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Mejora Directa (7.00 a 8.99) */}
+                <div className="bg-purple-950/20 border border-purple-500/20 rounded-xl p-4 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest block">
+                          Categoría 1
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-100">
+                          Mejora Directa (7.00 - 8.99)
+                        </h4>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                        globalImprovementStats.mejoraDirecta.isLimitReached
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                      }`}>
+                        {globalImprovementStats.mejoraDirecta.isLimitReached ? 'Límite Anual Alcanzado' : 'Disponible'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                      Examen escrito de mejoramiento. Límite reglamentario: <strong className="text-purple-300">máximo 3 en el año lectivo</strong> y <strong className="text-purple-300">máximo 1 por trimestre</strong>.
+                    </p>
+
+                    <div className="space-y-2 mb-3">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-slate-400">Total acumulado en el año:</span>
+                        <span className="font-mono text-purple-300">
+                          {globalImprovementStats.mejoraDirecta.totalUsed} / {globalImprovementStats.mejoraDirecta.maxAllowed}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className={`h-full transition-all duration-300 ${
+                            globalImprovementStats.mejoraDirecta.isLimitReached ? 'bg-rose-500' : 'bg-purple-500'
+                          }`}
+                          style={{ width: `${Math.min(100, (globalImprovementStats.mejoraDirecta.totalUsed / globalImprovementStats.mejoraDirecta.maxAllowed) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center">
+                      {(['1º Trimestre', '2º Trimestre', '3º Trimestre'] as Trimestre[]).map(t => {
+                        const trimData = globalImprovementStats.mejoraDirecta.byTrimestre[t];
+                        return (
+                          <div key={t} className="bg-black/30 p-2 rounded-lg border border-white/5">
+                            <span className="text-[10px] text-slate-400 block font-medium">{t.replace(' Trimestre', 'T')}</span>
+                            <span className={`text-xs font-mono font-bold ${trimData.isLimitReached ? 'text-rose-400' : 'text-purple-300'}`}>
+                              {trimData.used} / {trimData.maxAllowed}
+                            </span>
+                            <span className={`text-[9px] block ${trimData.isLimitReached ? 'text-rose-400 font-semibold' : 'text-slate-500'}`}>
+                              {trimData.isLimitReached ? 'Límite' : 'Disponible'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {globalImprovementStats.mejoraDirecta.activities.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-white/5">
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Materias con mejora directa:</p>
+                      <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                        {globalImprovementStats.mejoraDirecta.activities.map(a => (
+                          <div key={a.activityId} className="text-[11px] flex justify-between bg-black/20 px-2 py-1 rounded text-slate-300">
+                            <span className="truncate">{a.subject} ({a.trimestre.replace(' Trimestre', 'T')})</span>
+                            <span className="font-mono text-purple-300 shrink-0 ml-1">
+                              {formatGrade(a.origEq10)} ➔ {formatGrade(a.finalGrade)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Mejora con Refuerzo Pedagógico (0.01 a 6.99) */}
+                <div className="bg-amber-950/20 border border-amber-500/20 rounded-xl p-4 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
+                          Categoría 2
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-100">
+                          Mejora con Refuerzo Pedagógico (0.01 - 6.99)
+                        </h4>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                        globalImprovementStats.mejoraRefuerzo.isLimitReached
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      }`}>
+                        {globalImprovementStats.mejoraRefuerzo.isLimitReached ? 'Límite Anual Alcanzado' : 'Disponible'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                      Trabajo de refuerzo y examen escrito obligatorios. Límite reglamentario: <strong className="text-amber-300">máximo 6 en todo el año lectivo</strong>.
+                    </p>
+
+                    <div className="space-y-2 mb-3">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-slate-400">Total acumulado en el año:</span>
+                        <span className="font-mono text-amber-300">
+                          {globalImprovementStats.mejoraRefuerzo.totalUsed} / {globalImprovementStats.mejoraRefuerzo.maxAllowed}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className={`h-full transition-all duration-300 ${
+                            globalImprovementStats.mejoraRefuerzo.isLimitReached ? 'bg-rose-500' : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${Math.min(100, (globalImprovementStats.mejoraRefuerzo.totalUsed / globalImprovementStats.mejoraRefuerzo.maxAllowed) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-black/30 p-2.5 rounded-lg border border-white/5 text-center">
+                      <span className="text-[10px] text-slate-400 block font-medium">Disponibilidad en el año lectivo</span>
+                      <span className={`text-sm font-mono font-bold ${globalImprovementStats.mejoraRefuerzo.isLimitReached ? 'text-rose-400' : 'text-amber-300'}`}>
+                        {globalImprovementStats.mejoraRefuerzo.maxAllowed - globalImprovementStats.mejoraRefuerzo.totalUsed} de {globalImprovementStats.mejoraRefuerzo.maxAllowed} mejoras disponibles
+                      </span>
+                    </div>
+                  </div>
+
+                  {globalImprovementStats.mejoraRefuerzo.activities.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-white/5">
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Materias con mejora con refuerzo:</p>
+                      <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                        {globalImprovementStats.mejoraRefuerzo.activities.map(a => (
+                          <div key={a.activityId} className="text-[11px] flex justify-between bg-black/20 px-2 py-1 rounded text-slate-300">
+                            <span className="truncate">{a.subject} ({a.trimestre.replace(' Trimestre', 'T')})</span>
+                            <span className="font-mono text-amber-300 shrink-0 ml-1">
+                              {formatGrade(a.origEq10)} ➔ {formatGrade(a.finalGrade)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notificación de Alerta de Evaluación Final (< 7.00 sin mejoramiento) */}
+          {globalImprovementStats && globalImprovementStats.unimprovedAlerts.length > 0 && (
+            <div className="bg-amber-500/15 border border-amber-500/30 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-amber-300">
+                  Alerta en Evaluación Final: Calificaciones inferiores a 7.00 puntos
+                </h4>
+                <p className="text-xs text-amber-200/90 leading-relaxed">
+                  Tienes una alerta en las siguientes asignaturas por haber obtenido una calificación menor a 7.00 puntos en la Evaluación Final. Al no registrarse el proceso de mejoramiento obligatorio (trabajo de refuerzo y examen escrito), <strong>para el cálculo trimestral se mantiene la calificación original de la evaluación final</strong>:
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {globalImprovementStats.unimprovedAlerts.map(alert => (
+                    <span 
+                      key={alert.activityId} 
+                      className="text-xs bg-black/40 border border-amber-500/30 px-3 py-1.5 rounded-lg text-amber-200 font-mono flex items-center gap-1.5"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      <strong>{alert.subject}</strong> ({alert.trimestre}): {formatGrade(alert.origEq10)} / 10.00
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {failingSubjects.length > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
@@ -375,7 +570,6 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                 <option value="2º APORTE">2º APORTE</option>
                 <option value="EVALUACIÓN FINAL">EVALUACIÓN FINAL</option>
                 <option value="SUPLETORIO">SUPLETORIO</option>
-                <option value="MEJORAMIENTO">MEJORAMIENTO</option>
               </select>
             </div>
           </div>
@@ -451,32 +645,46 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                         {/* Detalle del Proceso de Mejoramiento para Evaluación Final */}
                         {isEvalFinal && efDetails && (
                           <div className="mt-3 p-3 bg-purple-950/20 rounded-xl border border-purple-500/20 space-y-3">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-xs font-bold text-purple-300 uppercase tracking-wider">
                                 Proceso de Mejoramiento de Evaluación Final
                               </p>
-                              {efDetails.requiresWork && (
+                              {efDetails.category === 'refuerzo' && (
                                 <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
-                                  Nota Inicial &lt; 7 (Requiere Trabajo y Examen)
+                                  Mejora con Refuerzo (0.01 - 6.99)
+                                </span>
+                              )}
+                              {efDetails.category === 'directa' && (
+                                <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-medium">
+                                  Mejora Directa (7.00 - 8.99)
+                                </span>
+                              )}
+                              {efDetails.category === 'none' && (
+                                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                                  Calificación ≥ 9.00 (Sin mejoramiento)
                                 </span>
                               )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                              {efDetails.requiresWork && (
-                                <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                                  <span className="text-slate-400 block mb-1 font-medium">Trabajo de Refuerzo</span>
-                                  {efDetails.workEq10 !== null ? (
+                              {/* Trabajo de Refuerzo */}
+                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                <span className="text-slate-400 block mb-1 font-medium">Trabajo de Refuerzo</span>
+                                {efDetails.category === 'refuerzo' ? (
+                                  efDetails.workEq10 !== null ? (
                                     <p className="font-mono font-bold text-amber-400">
                                       {grade?.improvementWorkGrade} / {activity.improvementWorkMaxScore || 10}
                                       <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.workEq10)} / 10)</span>
                                     </p>
                                   ) : (
                                     <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
-                                  )}
-                                </div>
-                              )}
+                                  )
+                                ) : (
+                                  <p className="text-slate-500 italic">No aplica (Nota ≥ 7.00)</p>
+                                )}
+                              </div>
 
+                              {/* Examen de Mejoramiento */}
                               <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
                                 <span className="text-slate-400 block mb-1 font-medium">Examen de Mejoramiento</span>
                                 {efDetails.examEq10 !== null ? (
@@ -485,14 +693,19 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                                     <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.examEq10)} / 10)</span>
                                   </p>
                                 ) : (
-                                  efDetails.requiresWork ? (
+                                  efDetails.category === 'refuerzo' ? (
                                     <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
                                   ) : (
-                                    <p className="text-slate-500 italic">Opcional (No presentado)</p>
+                                    efDetails.category === 'directa' ? (
+                                      <p className="text-slate-500 italic">Opcional (No presentado)</p>
+                                    ) : (
+                                      <p className="text-slate-500 italic">No aplica (Nota ≥ 9.00)</p>
+                                    )
                                   )
                                 )}
                               </div>
 
+                              {/* Promedio Calculado */}
                               <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
                                 <span className="text-slate-400 block mb-1 font-medium">Promedio Obtenido</span>
                                 <p className="font-mono font-bold text-slate-200">
@@ -501,8 +714,22 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                               </div>
                             </div>
 
-                            {/* Mensajes explícitos según requerimientos */}
-                            {efDetails.noImprovement && (
+                            {/* Mensajes explícitos según requerimientos normativos */}
+                            {efDetails.hasNoRecord && (
+                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
+                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                <div className="text-xs text-amber-200 space-y-1">
+                                  <p className="font-bold text-amber-300">
+                                    Alerta en Evaluación Final: Calificación menor a 7.00 puntos
+                                  </p>
+                                  <p className="text-amber-200/90 leading-relaxed">
+                                    Obtuviste una calificación menor a 7.00 puntos ({formatGrade(efDetails.origEq10)}/10.00). Al no registrarse ninguna nota de mejoramiento (trabajo de refuerzo y examen escrito), <strong>para el cálculo trimestral se mantiene la calificación original de {formatGrade(efDetails.origEq10)}</strong>.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {efDetails.noImprovement && !efDetails.hasNoRecord && (
                               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5">
                                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                                 <div className="text-xs text-slate-200 space-y-1">
@@ -530,15 +757,17 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                               </div>
                             )}
 
-                            {efDetails.isPending && (
+                            {efDetails.isPending && !efDetails.hasNoRecord && (
                               <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
                                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                                 <div className="text-xs text-amber-200 space-y-1">
                                   <p className="font-bold text-amber-300">
-                                    Proceso de mejoramiento obligatorio en curso
+                                    Proceso de mejoramiento en curso
                                   </p>
                                   <p className="text-amber-200/90 leading-relaxed">
-                                    Al tener una calificación inferior a 7.00 en la Evaluación Final, se requiere registrar tanto el trabajo de refuerzo como el examen de mejoramiento para computar su nota definitiva.
+                                    {efDetails.category === 'refuerzo' 
+                                      ? 'Al tener una calificación inferior a 7.00 en la Evaluación Final, se requiere registrar tanto el trabajo de refuerzo como el examen de mejoramiento para computar su nota definitiva.'
+                                      : 'Pendiente de confirmación de calificación de examen de mejoramiento.'}
                                   </p>
                                 </div>
                               </div>
@@ -611,9 +840,45 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-sm text-emerald-400/80 italic">Excelente, no hay alertas.</p>
+                      <p className="text-sm text-emerald-400/80 italic">Excelente, no hay alertas en esta materia.</p>
                     )}
                   </div>
+
+                  {globalImprovementStats && globalImprovementStats.unimprovedAlerts.length > 0 && (
+                    <div className="pt-3 border-t border-white/10">
+                      <p className="text-xs text-amber-400 font-semibold mb-2 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                        Eval. Finales &lt; 7 (Sin Mejora)
+                      </p>
+                      <ul className="space-y-1">
+                        {globalImprovementStats.unimprovedAlerts.map(a => (
+                          <li key={a.activityId} className="text-xs text-amber-200/90 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+                            <strong>{a.subject}</strong> ({a.trimestre}): {formatGrade(a.origEq10)} (Orig.)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {globalImprovementStats && (
+                    <div className="pt-3 border-t border-white/10 space-y-2">
+                      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                        Uso de Mejoramientos
+                      </p>
+                      <div className="text-xs flex justify-between text-slate-300">
+                        <span>Mejora directa:</span>
+                        <span className="font-mono text-purple-300 font-bold">
+                          {globalImprovementStats.mejoraDirecta.totalUsed} / {globalImprovementStats.mejoraDirecta.maxAllowed} (año)
+                        </span>
+                      </div>
+                      <div className="text-xs flex justify-between text-slate-300">
+                        <span>Con refuerzo:</span>
+                        <span className="font-mono text-amber-300 font-bold">
+                          {globalImprovementStats.mejoraRefuerzo.totalUsed} / {globalImprovementStats.mejoraRefuerzo.maxAllowed} (año)
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -51,6 +51,8 @@ export interface Grade {
   lastUpdated: string; // DD/MM/AAAA format
 }
 
+export type ImprovementCategory = 'refuerzo' | 'directa' | 'none';
+
 export interface EvaluacionFinalDetails {
   origEq10: number | null;
   workScore: number | null;
@@ -59,13 +61,59 @@ export interface EvaluacionFinalDetails {
   examEq10: number | null;
   calculatedAvg: number | null;
   finalGrade: number | null;
-  requiresImprovement: boolean; // true if origEq10 < 7
-  canImprove: boolean;          // true if 7 <= origEq10 < 10
-  isPending: boolean;           // true if origEq10 < 7 and work or exam is missing
-  attempted: boolean;           // true if required improvement inputs are provided
-  improved: boolean;            // true if calculatedAvg > origEq10
-  noImprovement: boolean;       // true if attempted and calculatedAvg < origEq10
+  category: ImprovementCategory; // 'refuerzo' (0.01-6.99) | 'directa' (7.00-8.99) | 'none' (>=9 or null)
+  requiresWork: boolean;         // true if category === 'refuerzo'
+  requiresExam: boolean;         // true if category === 'refuerzo' || category === 'directa'
+  isPending: boolean;            // true if category === 'refuerzo' and not both entered
+  hasNoRecord: boolean;          // true if origEq10 < 7 and no improvement grades registered at all
+  attempted: boolean;            // true if improvement inputs provided
+  improved: boolean;             // true if calculatedAvg > origEq10
+  noImprovement: boolean;        // true if attempted and calculatedAvg <= origEq10
   statusMessage: string;
+}
+
+export interface ActivityImprovementUsage {
+  activityId: string;
+  activityName: string;
+  subject: string;
+  trimestre: Trimestre;
+  origEq10: number;
+  calculatedAvg: number | null;
+  finalGrade: number;
+  workGrade?: number | null;
+  examGrade?: number | null;
+  improved: boolean;
+  noImprovement: boolean;
+}
+
+export interface StudentGlobalImprovementStats {
+  mejoraDirecta: {
+    totalUsed: number;
+    maxAllowed: number; // 3
+    isLimitReached: boolean;
+    byTrimestre: {
+      [key in Trimestre]: {
+        used: number;
+        maxAllowed: number; // 1
+        isLimitReached: boolean;
+        activities: ActivityImprovementUsage[];
+      };
+    };
+    activities: ActivityImprovementUsage[];
+  };
+  mejoraRefuerzo: {
+    totalUsed: number;
+    maxAllowed: number; // 6
+    isLimitReached: boolean;
+    activities: ActivityImprovementUsage[];
+  };
+  unimprovedAlerts: {
+    activityId: string;
+    activityName: string;
+    subject: string;
+    trimestre: Trimestre;
+    origEq10: number;
+  }[];
 }
 
 export interface ClassNote {

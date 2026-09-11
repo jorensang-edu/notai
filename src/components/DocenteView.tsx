@@ -11,7 +11,9 @@ import {
   calculateAnnualAverage,
   computeActivityFinalGrade,
   countStudentReinforcementsForSubject,
-  getEvaluacionFinalDetails
+  getEvaluacionFinalDetails,
+  canStudentRegisterImprovement,
+  getStudentGlobalImprovementStats
 } from '../utils';
 import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle } from 'lucide-react';
 import { auth } from '../firebase';
@@ -581,7 +583,6 @@ const [searchQuery, setSearchQuery] = useState('');
               <option value="2º APORTE">2º APORTE</option>
               <option value="EVALUACIÓN FINAL">EVALUACIÓN FINAL</option>
               <option value="SUPLETORIO">SUPLETORIO</option>
-              <option value="MEJORAMIENTO">MEJORAMIENTO</option>
             </select>
 
             <select
@@ -903,7 +904,6 @@ const [searchQuery, setSearchQuery] = useState('');
                     <option value="2º APORTE">2º APORTE</option>
                     <option value="EVALUACIÓN FINAL">EVALUACIÓN FINAL</option>
                     <option value="SUPLETORIO">SUPLETORIO</option>
-                    <option value="MEJORAMIENTO">MEJORAMIENTO</option>
                   </select>
                   {newActivityComponent === 'EVALUACIÓN FINAL' && (
                     <label className="flex items-center gap-2 text-sm text-slate-200">
@@ -1064,9 +1064,9 @@ const [searchQuery, setSearchQuery] = useState('');
                         <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[70px] text-blue-400/70">Eq. 10</th>
                         {isEvalFinal && (
                           <>
-                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-amber-400/90" title="Trabajo de Refuerzo (Obligatorio si < 7)">Trab. Ref.</th>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-amber-400/90" title="Trabajo de Refuerzo (Obligatorio en rango 0.01 a 6.99)">Trab. Ref.</th>
                             <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[65px] text-amber-400/70">Eq. 10</th>
-                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-purple-400/90" title="Examen de Mejoramiento">Ex. Mej.</th>
+                            <th className="px-2 py-2 font-semibold text-center border-b border-white/5 bg-[#0f172a] min-w-[75px] text-purple-400/90" title="Examen de Mejoramiento (Obligatorio < 7, Único si 7.00 a 8.99)">Ex. Mej.</th>
                             <th className="px-2 py-2 font-semibold text-center border-b border-r border-white/5 bg-[#0f172a] min-w-[65px] text-purple-400/70">Eq. 10</th>
                           </>
                         )}
@@ -1160,59 +1160,88 @@ const [searchQuery, setSearchQuery] = useState('');
                               </td>
                               
                               {/* EVALUACIÓN FINAL: Improvement inputs */}
-                              {isEvalFinal && (
-                                <>
-                                  {/* Trabajo de Refuerzo (Obligatorio si origEq10 < 7) */}
-                                  <td className={'px-2 py-2 text-center border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-amber-500/5' : '')}>
-                                    <input
-                                      type="number"
-                                      min="0" step="0.01"
-                                      value={grade?.improvementWorkGrade ?? ''}
-                                      onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementWork', e.target.value)}
-                                      placeholder={origEq10 !== null && origEq10 < 7 ? (grade?.improvementWorkGrade == null ? 'Oblig.' : '') : 'N/A'}
-                                      title={origEq10 !== null && origEq10 < 7 ? "Trabajo de refuerzo obligatorio (Nota < 7)" : "Solo aplica si la nota original es menor a 7"}
-                                      className={
-                                        'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
-                                        (origEq10 !== null && origEq10 < 7 && grade?.improvementWorkGrade == null
-                                          ? 'border border-amber-400 ring-1 ring-amber-400/40 text-amber-300 placeholder:text-amber-500/70'
-                                          : 'border border-white/10 text-amber-400 focus:outline-none focus:border-amber-500 disabled:opacity-25')
-                                      }
-                                      disabled={isUnauthorized || origEq10 === null || origEq10 >= 7}
-                                    />
-                                  </td>
-                                  {/* Trabajo Eq 10 */}
-                                  <td className={'px-2 py-2 text-center border-r border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-amber-500/5' : '')}>
-                                    <span className="font-mono text-xs text-amber-400/80">
-                                      {efDetails?.workEq10 !== null && efDetails?.workEq10 !== undefined ? formatGrade(efDetails.workEq10) : '-'}
-                                    </span>
-                                  </td>
+                              {isEvalFinal && (() => {
+                                const canImprove = canStudentRegisterImprovement(student.id, activity, origEq10, activities, grades, selectedCourse);
+                                const isRefuerzoCategory = origEq10 !== null && origEq10 < 7;
+                                const isDirectaCategory = origEq10 !== null && origEq10 >= 7 && origEq10 < 9;
+                                const isNoImprovementCategory = origEq10 !== null && origEq10 >= 9;
 
-                                  {/* Examen de Mejoramiento (Obligatorio si < 7, opcional si 7 a 9.99) */}
-                                  <td className={'px-2 py-2 text-center border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-purple-500/5' : '')}>
-                                    <input
-                                      type="number"
-                                      min="0" step="0.01"
-                                      value={grade?.improvementExamGrade ?? ''}
-                                      onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementExam', e.target.value)}
-                                      placeholder={origEq10 !== null && origEq10 < 7 ? (grade?.improvementExamGrade == null ? 'Oblig.' : '') : (origEq10 !== null && origEq10 < 10 ? 'Opc.' : 'N/A')}
-                                      title={origEq10 !== null && origEq10 < 7 ? "Examen de mejoramiento obligatorio" : (origEq10 !== null && origEq10 < 10 ? "Examen de mejoramiento opcional" : "Ya tiene 10")}
-                                      className={
-                                        'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
-                                        (origEq10 !== null && origEq10 < 7 && grade?.improvementExamGrade == null
-                                          ? 'border border-amber-400 ring-1 ring-amber-400/40 text-purple-300 placeholder:text-amber-500/70'
-                                          : 'border border-white/10 text-purple-400 focus:outline-none focus:border-purple-500 disabled:opacity-25')
-                                      }
-                                      disabled={isUnauthorized || origEq10 === null || origEq10 >= 10}
-                                    />
-                                  </td>
-                                  {/* Examen Eq 10 */}
-                                  <td className={'px-2 py-2 text-center border-r border-white/5 ' + (origEq10 !== null && origEq10 < 7 ? 'bg-purple-500/5' : '')}>
-                                    <span className="font-mono text-xs text-purple-400/80">
-                                      {efDetails?.examEq10 !== null && efDetails?.examEq10 !== undefined ? formatGrade(efDetails.examEq10) : '-'}
-                                    </span>
-                                  </td>
-                                </>
-                              )}
+                                const workDisabled = isUnauthorized || origEq10 === null || !isRefuerzoCategory || (canImprove.isLimitReached && grade?.improvementWorkGrade == null && grade?.improvementExamGrade == null);
+                                const workPlaceholder = isRefuerzoCategory
+                                  ? (canImprove.isLimitReached && grade?.improvementWorkGrade == null ? 'Límite' : (grade?.improvementWorkGrade == null ? 'Oblig.' : ''))
+                                  : 'N/A';
+                                const workTitle = isRefuerzoCategory
+                                  ? (canImprove.isLimitReached ? canImprove.reason : "Trabajo de refuerzo obligatorio (Rango 0.01 a 6.99)")
+                                  : (isDirectaCategory ? "No aplica trabajo de refuerzo para calificaciones entre 7.00 y 8.99" : (isNoImprovementCategory ? "Calificación ≥ 9.00 no aplica para mejoramiento" : "Pendiente de nota escrita"));
+
+                                const examDisabled = isUnauthorized || origEq10 === null || isNoImprovementCategory || (canImprove.isLimitReached && (isRefuerzoCategory ? (grade?.improvementWorkGrade == null && grade?.improvementExamGrade == null) : grade?.improvementExamGrade == null));
+                                const examPlaceholder = isRefuerzoCategory
+                                  ? (canImprove.isLimitReached && grade?.improvementExamGrade == null ? 'Límite' : (grade?.improvementExamGrade == null ? 'Oblig.' : ''))
+                                  : (isDirectaCategory
+                                      ? (canImprove.isLimitReached && grade?.improvementExamGrade == null ? 'Límite' : (grade?.improvementExamGrade == null ? 'Ex. Mej.' : ''))
+                                      : 'N/A');
+                                const examTitle = isRefuerzoCategory
+                                  ? (canImprove.isLimitReached ? canImprove.reason : "Examen de mejoramiento obligatorio (Rango 0.01 a 6.99)")
+                                  : (isDirectaCategory
+                                      ? (canImprove.isLimitReached ? canImprove.reason : "Mejora directa: Examen escrito opcional (Rango 7.00 a 8.99 - máx. 1 por trim., 3 al año)")
+                                      : (isNoImprovementCategory ? "Calificación ≥ 9.00 no aplica para mejoramiento" : "Pendiente de nota escrita"));
+
+                                return (
+                                  <>
+                                    {/* Trabajo de Refuerzo (Obligatorio si origEq10 < 7) */}
+                                    <td className={'px-2 py-2 text-center border-white/5 ' + (isRefuerzoCategory ? 'bg-amber-500/5' : '')}>
+                                      <input
+                                        type="number"
+                                        min="0" step="0.01"
+                                        value={grade?.improvementWorkGrade ?? ''}
+                                        onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementWork', e.target.value)}
+                                        placeholder={workPlaceholder}
+                                        title={workTitle}
+                                        className={
+                                          'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
+                                          (isRefuerzoCategory && grade?.improvementWorkGrade == null
+                                            ? (canImprove.isLimitReached ? 'border border-rose-500/50 text-rose-300 placeholder:text-rose-500/70' : 'border border-amber-400 ring-1 ring-amber-400/40 text-amber-300 placeholder:text-amber-500/70')
+                                            : 'border border-white/10 text-amber-400 focus:outline-none focus:border-amber-500 disabled:opacity-25')
+                                        }
+                                        disabled={workDisabled}
+                                      />
+                                    </td>
+                                    {/* Trabajo Eq 10 */}
+                                    <td className={'px-2 py-2 text-center border-r border-white/5 ' + (isRefuerzoCategory ? 'bg-amber-500/5' : '')}>
+                                      <span className="font-mono text-xs text-amber-400/80">
+                                        {efDetails?.workEq10 !== null && efDetails?.workEq10 !== undefined ? formatGrade(efDetails.workEq10) : '-'}
+                                      </span>
+                                    </td>
+
+                                    {/* Examen de Mejoramiento */}
+                                    <td className={'px-2 py-2 text-center border-white/5 ' + (isRefuerzoCategory ? 'bg-purple-500/5' : (isDirectaCategory ? 'bg-purple-500/5' : ''))}>
+                                      <input
+                                        type="number"
+                                        min="0" step="0.01"
+                                        value={grade?.improvementExamGrade ?? ''}
+                                        onChange={(e) => handleGradeChange(student.id, activity.id, 'improvementExam', e.target.value)}
+                                        placeholder={examPlaceholder}
+                                        title={examTitle}
+                                        className={
+                                          'w-16 px-1 py-1 text-center bg-[#0f172a] rounded font-mono text-xs ' +
+                                          (isRefuerzoCategory && grade?.improvementExamGrade == null
+                                            ? (canImprove.isLimitReached ? 'border border-rose-500/50 text-rose-300 placeholder:text-rose-500/70' : 'border border-amber-400 ring-1 ring-amber-400/40 text-purple-300 placeholder:text-amber-500/70')
+                                            : (isDirectaCategory && canImprove.isLimitReached && grade?.improvementExamGrade == null
+                                                ? 'border border-rose-500/50 text-rose-300 placeholder:text-rose-500/70'
+                                                : 'border border-white/10 text-purple-400 focus:outline-none focus:border-purple-500 disabled:opacity-25'))
+                                        }
+                                        disabled={examDisabled}
+                                      />
+                                    </td>
+                                    {/* Examen Eq 10 */}
+                                    <td className={'px-2 py-2 text-center border-r border-white/5 ' + (isRefuerzoCategory || isDirectaCategory ? 'bg-purple-500/5' : '')}>
+                                      <span className="font-mono text-xs text-purple-400/80">
+                                        {efDetails?.examEq10 !== null && efDetails?.examEq10 !== undefined ? formatGrade(efDetails.examEq10) : '-'}
+                                      </span>
+                                    </td>
+                                  </>
+                                );
+                              })()}
                               
                               {!isEvalFinal && !isMejoramiento && (
                                 <>
@@ -1243,10 +1272,18 @@ const [searchQuery, setSearchQuery] = useState('');
                                     <span className={'font-bold px-2 py-0.5 rounded text-xs ' + (isDefinitivaLow ? 'text-rose-400' : (!isEvalFinal && !isMejoramiento && grade?.reinforcementGrade != null) || efDetails?.improved ? 'text-emerald-400' : 'text-slate-200')}>
                                       {formatGrade(finalGrade)}
                                     </span>
+                                    {isEvalFinal && efDetails?.hasNoRecord && (
+                                      <span 
+                                        className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
+                                        title={`Alerta: Calificación menor a 7.00 (${formatGrade(efDetails.origEq10)}) sin registro de mejoramiento. Se mantiene nota original.`}
+                                      >
+                                        Sin mejora (Orig.)
+                                      </span>
+                                    )}
                                     {isEvalFinal && efDetails?.noImprovement && (
                                       <span 
                                         className="text-[9px] text-rose-400 font-medium mt-0.5 bg-rose-500/10 border border-rose-500/20 px-1 rounded cursor-help"
-                                        title={`No hubo mejora: Promedio calculado (${formatGrade(efDetails.calculatedAvg)}) < Original (${formatGrade(efDetails.origEq10)}). Se mantiene nota original.`}
+                                        title={`No hubo mejora: Promedio calculado (${formatGrade(efDetails.calculatedAvg)}) <= Original (${formatGrade(efDetails.origEq10)}). Se mantiene nota original.`}
                                       >
                                         Sin mejora ({formatGrade(efDetails.calculatedAvg)})
                                       </span>
@@ -1259,12 +1296,12 @@ const [searchQuery, setSearchQuery] = useState('');
                                         ▲ Mejora ({formatGrade(efDetails.origEq10)} ➔ {formatGrade(efDetails.finalGrade)})
                                       </span>
                                     )}
-                                    {isEvalFinal && efDetails?.isPending && (
+                                    {isEvalFinal && efDetails?.isPending && !efDetails?.hasNoRecord && (
                                       <span 
                                         className="text-[9px] text-amber-400 font-medium mt-0.5 bg-amber-500/10 border border-amber-500/20 px-1 rounded cursor-help"
-                                        title="Requiere Trabajo de Refuerzo y Examen de Mejoramiento"
+                                        title="Proceso de mejoramiento en curso: Pendiente completar requisitos"
                                       >
-                                        Mej. Pend.
+                                        Mej. En curso
                                       </span>
                                     )}
                                   </div>

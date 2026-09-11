@@ -64,7 +64,16 @@ export function formatGrade(grade: number | null): string {
   return grade.toFixed(2);
 }
 
-import { Activity, Grade, Trimestre, EvaluationComponent, EvaluacionFinalDetails } from './types';
+import { 
+  Activity, 
+  Grade, 
+  Trimestre, 
+  EvaluationComponent, 
+  EvaluacionFinalDetails, 
+  StudentGlobalImprovementStats, 
+  ActivityImprovementUsage,
+  ImprovementCategory 
+} from './types';
 
 export function getEvaluacionFinalDetails(
   grade: Grade | null | undefined,
@@ -79,9 +88,11 @@ export function getEvaluacionFinalDetails(
     examEq10: null,
     calculatedAvg: null,
     finalGrade: origEq10,
-    requiresImprovement: false,
-    canImprove: false,
+    category: 'none',
+    requiresWork: false,
+    requiresExam: false,
     isPending: false,
+    hasNoRecord: false,
     attempted: false,
     improved: false,
     noImprovement: false,
@@ -92,14 +103,38 @@ export function getEvaluacionFinalDetails(
     return defaultRes;
   }
 
-  // Caso A: Nota menor a 7
+  // Rango 1: 0.01 a 6.99 (o cualquier nota < 7) -> Mejora con Refuerzo Pedagógico
   if (origEq10 < 7) {
     const workScore = grade?.improvementWorkGrade ?? null;
     const examScore = grade?.improvementExamGrade ?? null;
     const workEq10 = convertTo10(workScore, activity.improvementWorkMaxScore || 10);
     const examEq10 = convertTo10(examScore, activity.improvementExamMaxScore || 10);
 
-    const hasBoth = workEq10 !== null && examEq10 !== null;
+    const hasWork = workEq10 !== null;
+    const hasExam = examEq10 !== null;
+    const hasBoth = hasWork && hasExam;
+    const hasNone = workScore === null && examScore === null;
+
+    if (hasNone) {
+      return {
+        origEq10,
+        workScore: null,
+        workEq10: null,
+        examScore: null,
+        examEq10: null,
+        calculatedAvg: null,
+        finalGrade: origEq10, // Se mantiene la nota original para el cálculo trimestral
+        category: 'refuerzo',
+        requiresWork: true,
+        requiresExam: true,
+        isPending: true,
+        hasNoRecord: true,
+        attempted: false,
+        improved: false,
+        noImprovement: false,
+        statusMessage: 'Alerta: Calificación menor a 7 sin registro de mejoramiento. Se mantiene nota original.',
+      };
+    }
 
     if (hasBoth) {
       const calculatedAvg = Math.trunc(((origEq10 + workEq10 + examEq10) / 3) * 100) / 100;
@@ -113,10 +148,12 @@ export function getEvaluacionFinalDetails(
           examScore,
           examEq10,
           calculatedAvg,
-          finalGrade: origEq10, // Se protege la nota original
-          requiresImprovement: true,
-          canImprove: false,
+          finalGrade: origEq10, // Se protege y mantiene la nota original
+          category: 'refuerzo',
+          requiresWork: true,
+          requiresExam: true,
           isPending: false,
+          hasNoRecord: false,
           attempted: true,
           improved: false,
           noImprovement: true,
@@ -133,19 +170,21 @@ export function getEvaluacionFinalDetails(
         examEq10,
         calculatedAvg,
         finalGrade: calculatedAvg,
-        requiresImprovement: true,
-        canImprove: false,
+        category: 'refuerzo',
+        requiresWork: true,
+        requiresExam: true,
         isPending: false,
+        hasNoRecord: false,
         attempted: true,
         improved,
         noImprovement: false,
         statusMessage: improved 
-          ? `Mejora de calificación: ${origEq10.toFixed(2)} ➔ ${calculatedAvg.toFixed(2)}`
+          ? `Mejora con refuerzo pedagógico: ${origEq10.toFixed(2)} ➔ ${calculatedAvg.toFixed(2)}`
           : 'Calificación se mantiene igual',
       };
     }
 
-    // Aún no ingresa ambos requisitos obligatorios
+    // Ingreso parcial (falta trabajo o examen)
     return {
       origEq10,
       workScore,
@@ -153,19 +192,23 @@ export function getEvaluacionFinalDetails(
       examScore,
       examEq10,
       calculatedAvg: null,
-      finalGrade: origEq10,
-      requiresImprovement: true,
-      canImprove: false,
+      finalGrade: origEq10, // Se mantiene original mientras esté incompleto
+      category: 'refuerzo',
+      requiresWork: true,
+      requiresExam: true,
       isPending: true,
-      attempted: workEq10 !== null || examEq10 !== null,
+      hasNoRecord: false,
+      attempted: true,
       improved: false,
       noImprovement: false,
-      statusMessage: 'Requiere trabajo de refuerzo y examen de mejoramiento',
+      statusMessage: hasWork 
+        ? 'Pendiente: Falta examen escrito de mejoramiento' 
+        : 'Pendiente: Falta trabajo de refuerzo',
     };
   }
 
-  // Caso B: Nota entre 7 y 9.99
-  if (origEq10 >= 7 && origEq10 < 10) {
+  // Rango 2: 7.00 a 8.99 -> Mejora directa (únicamente examen escrito)
+  if (origEq10 >= 7 && origEq10 < 9) {
     const examScore = grade?.improvementExamGrade ?? null;
     const examEq10 = convertTo10(examScore, activity.improvementExamMaxScore || 10);
 
@@ -182,9 +225,11 @@ export function getEvaluacionFinalDetails(
           examEq10,
           calculatedAvg,
           finalGrade: origEq10, // Se protege la nota original
-          requiresImprovement: false,
-          canImprove: true,
+          category: 'directa',
+          requiresWork: false,
+          requiresExam: true,
           isPending: false,
+          hasNoRecord: false,
           attempted: true,
           improved: false,
           noImprovement: true,
@@ -201,14 +246,16 @@ export function getEvaluacionFinalDetails(
         examEq10,
         calculatedAvg,
         finalGrade: calculatedAvg,
-        requiresImprovement: false,
-        canImprove: true,
+        category: 'directa',
+        requiresWork: false,
+        requiresExam: true,
         isPending: false,
+        hasNoRecord: false,
         attempted: true,
         improved,
         noImprovement: false,
         statusMessage: improved 
-          ? `Mejora de calificación: ${origEq10.toFixed(2)} ➔ ${calculatedAvg.toFixed(2)}`
+          ? `Mejora directa: ${origEq10.toFixed(2)} ➔ ${calculatedAvg.toFixed(2)}`
           : 'Calificación se mantiene igual',
       };
     }
@@ -221,21 +268,236 @@ export function getEvaluacionFinalDetails(
       examEq10: null,
       calculatedAvg: null,
       finalGrade: origEq10,
-      requiresImprovement: false,
-      canImprove: true,
+      category: 'directa',
+      requiresWork: false,
+      requiresExam: true,
       isPending: false,
+      hasNoRecord: false,
       attempted: false,
       improved: false,
       noImprovement: false,
-      statusMessage: '',
+      statusMessage: 'Rango 7.00 a 8.99: Examen de mejoramiento opcional',
     };
   }
 
-  // Caso C: Nota igual a 10
+  // Rango 3: Calificación >= 9.00 (No aplica mejoramiento)
   return {
     ...defaultRes,
-    finalGrade: 10,
-    statusMessage: 'Calificación máxima',
+    finalGrade: origEq10,
+    category: 'none',
+    requiresWork: false,
+    requiresExam: false,
+    statusMessage: 'Calificación ≥ 9.00: No aplica proceso de mejoramiento',
+  };
+}
+
+export function getStudentGlobalImprovementStats(
+  studentId: string,
+  activities: Activity[],
+  grades: Grade[],
+  course?: string
+): StudentGlobalImprovementStats {
+  const result: StudentGlobalImprovementStats = {
+    mejoraDirecta: {
+      totalUsed: 0,
+      maxAllowed: 3,
+      isLimitReached: false,
+      byTrimestre: {
+        '1º Trimestre': { used: 0, maxAllowed: 1, isLimitReached: false, activities: [] },
+        '2º Trimestre': { used: 0, maxAllowed: 1, isLimitReached: false, activities: [] },
+        '3º Trimestre': { used: 0, maxAllowed: 1, isLimitReached: false, activities: [] },
+      },
+      activities: [],
+    },
+    mejoraRefuerzo: {
+      totalUsed: 0,
+      maxAllowed: 6,
+      isLimitReached: false,
+      activities: [],
+    },
+    unimprovedAlerts: [],
+  };
+
+  const evalFinalActivities = activities.filter(a => 
+    a.component === 'EVALUACIÓN FINAL' && (!course || a.course === course)
+  );
+
+  evalFinalActivities.forEach(activity => {
+    const grade = grades.find(g => g.studentId === studentId && g.activityId === activity.id);
+    const { origEq10, efDetails } = computeActivityFinalGrade(activity, grade);
+
+    if (origEq10 === null) return;
+
+    const trimestre: Trimestre = (activity.trimestre && ['1º Trimestre', '2º Trimestre', '3º Trimestre'].includes(activity.trimestre))
+      ? activity.trimestre
+      : '1º Trimestre';
+
+    // Rango 0.01 a 6.99: Mejora con Refuerzo Pedagógico (máximo 6 al año)
+    if (origEq10 < 7) {
+      const hasAttempt = grade?.improvementWorkGrade != null || grade?.improvementExamGrade != null;
+      if (hasAttempt) {
+        const usage: ActivityImprovementUsage = {
+          activityId: activity.id,
+          activityName: activity.name,
+          subject: activity.subject,
+          trimestre,
+          origEq10,
+          calculatedAvg: efDetails?.calculatedAvg ?? null,
+          finalGrade: efDetails?.finalGrade ?? origEq10,
+          workGrade: grade?.improvementWorkGrade,
+          examGrade: grade?.improvementExamGrade,
+          improved: efDetails?.improved ?? false,
+          noImprovement: efDetails?.noImprovement ?? false,
+        };
+        result.mejoraRefuerzo.activities.push(usage);
+        result.mejoraRefuerzo.totalUsed++;
+      } else {
+        // Alerta: Calificación menor a 7 sin registro de mejoramiento
+        result.unimprovedAlerts.push({
+          activityId: activity.id,
+          activityName: activity.name,
+          subject: activity.subject,
+          trimestre,
+          origEq10,
+        });
+      }
+    } 
+    // Rango 7.00 a 8.99: Mejora Directa (máximo 1 por trimestre, 3 al año)
+    else if (origEq10 >= 7 && origEq10 < 9) {
+      const hasExam = grade?.improvementExamGrade != null;
+      if (hasExam) {
+        const usage: ActivityImprovementUsage = {
+          activityId: activity.id,
+          activityName: activity.name,
+          subject: activity.subject,
+          trimestre,
+          origEq10,
+          calculatedAvg: efDetails?.calculatedAvg ?? null,
+          finalGrade: efDetails?.finalGrade ?? origEq10,
+          examGrade: grade?.improvementExamGrade,
+          improved: efDetails?.improved ?? false,
+          noImprovement: efDetails?.noImprovement ?? false,
+        };
+        result.mejoraDirecta.activities.push(usage);
+        result.mejoraDirecta.totalUsed++;
+        if (result.mejoraDirecta.byTrimestre[trimestre]) {
+          result.mejoraDirecta.byTrimestre[trimestre].used++;
+          result.mejoraDirecta.byTrimestre[trimestre].activities.push(usage);
+        }
+      }
+    }
+  });
+
+  result.mejoraDirecta.isLimitReached = result.mejoraDirecta.totalUsed >= result.mejoraDirecta.maxAllowed;
+  (['1º Trimestre', '2º Trimestre', '3º Trimestre'] as Trimestre[]).forEach(t => {
+    result.mejoraDirecta.byTrimestre[t].isLimitReached = result.mejoraDirecta.byTrimestre[t].used >= result.mejoraDirecta.byTrimestre[t].maxAllowed;
+  });
+
+  result.mejoraRefuerzo.isLimitReached = result.mejoraRefuerzo.totalUsed >= result.mejoraRefuerzo.maxAllowed;
+
+  return result;
+}
+
+export function canStudentRegisterImprovement(
+  studentId: string,
+  activity: Activity,
+  origEq10: number | null,
+  activities: Activity[],
+  grades: Grade[],
+  course?: string
+): {
+  canRegister: boolean;
+  reason?: string;
+  category: ImprovementCategory;
+  isLimitReached: boolean;
+} {
+  if (origEq10 === null || isNaN(origEq10)) {
+    return { canRegister: false, category: 'none', isLimitReached: false, reason: 'Evaluación no calificada' };
+  }
+  if (origEq10 >= 9.00) {
+    return { canRegister: false, category: 'none', isLimitReached: false, reason: 'Calificación ≥ 9.00 no requiere proceso de mejoramiento' };
+  }
+
+  const actTrimestre: Trimestre = (activity.trimestre && ['1º Trimestre', '2º Trimestre', '3º Trimestre'].includes(activity.trimestre))
+    ? activity.trimestre
+    : '1º Trimestre';
+
+  // Otras actividades de evaluación final para validar límites
+  const otherActivities = activities.filter(a => 
+    a.component === 'EVALUACIÓN FINAL' && a.id !== activity.id && (!course || a.course === course)
+  );
+
+  if (origEq10 >= 7.00 && origEq10 < 9.00) {
+    // Mejora directa: máx 1 por trimestre, máx 3 al año
+    let otherDirectaYear = 0;
+    let otherDirectaTrimestre = 0;
+
+    otherActivities.forEach(otherAct => {
+      const otherG = grades.find(g => g.studentId === studentId && g.activityId === otherAct.id);
+      if (otherG?.improvementExamGrade != null) {
+        const { origEq10: otherOrig } = computeActivityFinalGrade(otherAct, otherG);
+        if (otherOrig !== null && otherOrig >= 7.00 && otherOrig < 9.00) {
+          otherDirectaYear++;
+          const otherTrim = (otherAct.trimestre && ['1º Trimestre', '2º Trimestre', '3º Trimestre'].includes(otherAct.trimestre))
+            ? otherAct.trimestre
+            : '1º Trimestre';
+          if (otherTrim === actTrimestre) {
+            otherDirectaTrimestre++;
+          }
+        }
+      }
+    });
+
+    if (otherDirectaTrimestre >= 1) {
+      return {
+        canRegister: false,
+        category: 'directa',
+        isLimitReached: true,
+        reason: `Límite alcanzado: Ya utilizó 1 mejora directa en ${actTrimestre} (máximo 1 por trimestre)`,
+      };
+    }
+
+    if (otherDirectaYear >= 3) {
+      return {
+        canRegister: false,
+        category: 'directa',
+        isLimitReached: true,
+        reason: 'Límite anual alcanzado: Ya utilizó 3 mejoras directas en el año lectivo (máximo 3 al año)',
+      };
+    }
+
+    return {
+      canRegister: true,
+      category: 'directa',
+      isLimitReached: false,
+    };
+  }
+
+  // origEq10 < 7.00: Mejora con refuerzo pedagógico (máx 6 al año)
+  let otherRefuerzoYear = 0;
+  otherActivities.forEach(otherAct => {
+    const otherG = grades.find(g => g.studentId === studentId && g.activityId === otherAct.id);
+    if (otherG?.improvementWorkGrade != null || otherG?.improvementExamGrade != null) {
+      const { origEq10: otherOrig } = computeActivityFinalGrade(otherAct, otherG);
+      if (otherOrig !== null && otherOrig < 7.00) {
+        otherRefuerzoYear++;
+      }
+    }
+  });
+
+  if (otherRefuerzoYear >= 6) {
+    return {
+      canRegister: false,
+      category: 'refuerzo',
+      isLimitReached: true,
+      reason: 'Límite anual alcanzado: Ya utilizó 6 mejoras con refuerzo pedagógico en el año lectivo (máximo 6 al año)',
+    };
+  }
+
+  return {
+    canRegister: true,
+    category: 'refuerzo',
+    isLimitReached: false,
   };
 }
 
