@@ -66,16 +66,12 @@ export function validateEmailForRole(email: string | null | undefined, targetRol
       return { isValid: true, domainType: 'estudiante' };
     }
     if (domainType === 'docente') {
-      return {
-        isValid: false,
-        domainType: 'docente',
-        errorMessage: 'Acceso denegado: El correo institucional @cedfi.edu.ec corresponde al personal docente. Por favor, utilice el acceso Docente o Tutoría.'
-      };
+      return { isValid: true, domainType: 'docente' };
     }
     return {
       isValid: false,
       domainType: 'unknown',
-      errorMessage: 'Dominio no institucional: Se requiere una cuenta institucional @stu.cedfi.edu.ec para ingresar al Portal Estudiante.'
+      errorMessage: 'Dominio no institucional: Se requiere una cuenta institucional (@stu.cedfi.edu.ec para estudiantes o @cedfi.edu.ec para docentes/tutores).'
     };
   }
 
@@ -118,6 +114,11 @@ export function checkCodeBinding(
     return { allowed: true };
   }
 
+  // Teachers/Tutors accessing student view can inspect any student without being locked
+  if (role === 'estudiante' && (getEmailDomainType(email) === 'docente' || getEmailDomainType(email) === 'admin')) {
+    return { allowed: true };
+  }
+
   const cleanEmail = email.toLowerCase().trim();
   const cleanCode = code.toUpperCase().trim();
   const bindings = getStoredBindings();
@@ -148,6 +149,11 @@ export function saveCodeBinding(
   code: string, 
   role: 'docente' | 'tutor' | 'estudiante'
 ) {
+  // Do not bind teachers/tutors consulting student view
+  if (role === 'estudiante' && (getEmailDomainType(email) === 'docente' || getEmailDomainType(email) === 'admin')) {
+    return;
+  }
+
   const cleanEmail = email.toLowerCase().trim();
   const cleanCode = code.toUpperCase().trim();
   const bindings = getStoredBindings().filter(b => !(b.email === cleanEmail && b.role === role));

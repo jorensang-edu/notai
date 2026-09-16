@@ -1,6 +1,6 @@
 export type Level = 'Básica Superior' | 'Bachillerato';
-export type CourseName = '9 EGB A' | '9 EGB B' | '1 BACH. A' | '1 BACH. B' | '2 BACH. A' | '2 BACH. B' | '3 BACH. A' | '3 BACH. B';
-export type SubjectName = 'Matemáticas' | 'Física';
+export type CourseName = '8 EGB A' | '8 EGB B' | '9 EGB A' | '9 EGB B' | '10 EGB A' | '10 EGB B' | '1 BACH. A' | '1 BACH. B' | '2 BACH. A' | '2 BACH. B' | '3 BACH. A' | '3 BACH. B';
+export type SubjectName = 'Matemáticas' | 'Lengua y Literatura' | 'Ciencias Naturales' | 'Biología' | 'Química' | 'Física' | 'Diplomado' | 'Indagación' | 'Filosofía' | 'Patrimonio' | 'Ciudadanía' | 'Ciencias Sociales' | 'Investigación' | 'Estudios Sociales';
 
 export const STUDENTS_DATA = [
   // 3 BACH. B
@@ -60,6 +60,7 @@ export const STUDENTS_DATA = [
   { code: '03731', name: 'CHACON PESANTEZ JAEL VALENTINA', course: '2 BACH. B', level: 'Bachillerato' },
   { code: '03435', name: 'CRIOLLO SAMANIEGO ELIAS ISMAEL', course: '2 BACH. B', level: 'Bachillerato' },
   { code: '02322', name: 'DURAZNO SHININ LUCIANA ISABELLA', course: '2 BACH. B', level: 'Bachillerato' },
+  { code: '03750', name: 'FLORES GUAMAN JOAQUIN ENRIQUE', course: '2 BACH. B', level: 'Bachillerato' },
   { code: '03453', name: 'FLORES VALLEJO JULIANA SOFIA', course: '2 BACH. B', level: 'Bachillerato' },
   { code: '02332', name: 'LAZO SALAZAR SOFIA VALENTINA', course: '2 BACH. B', level: 'Bachillerato' },
   { code: '02639', name: 'MONTALEZA ABAD LYLA ANALIZ', course: '2 BACH. B', level: 'Bachillerato' },
@@ -152,6 +153,7 @@ export const STUDENTS_DATA = [
   { code: '03390', name: 'JACOME NAVARRETE DEBORA SOFIA', course: '9 EGB B', level: 'Básica Superior' },
   { code: '02755', name: 'LEON RAMON LEONARDO SEBASTIAN', course: '9 EGB B', level: 'Básica Superior' },
   { code: '02687', name: 'MINCHALO GONZALEZ MIA VALENTINA', course: '9 EGB B', level: 'Básica Superior' },
+  { code: '02660', name: 'MOLINA POZO RENATA RAFAELA', course: '9 EGB B', level: 'Básica Superior' },
   { code: '02663', name: 'NARVAEZ YUNGASACA EMILIA RAFAELLA', course: '9 EGB B', level: 'Básica Superior' },
   { code: '03381', name: 'ORELLANA MARTINEZ JUAN MANUEL', course: '9 EGB B', level: 'Básica Superior' },
   { code: '02675', name: 'ORELLANA QUINTUÑA JORDAN MIGUEL', course: '9 EGB B', level: 'Básica Superior' },
@@ -187,6 +189,7 @@ export const STUDENTS_DATA = [
   { code: '03704', name: 'BARROS ARIAS NICOLAS BLADIMIR', course: '10 EGB B', level: 'Básica Superior' },
   { code: '03437', name: 'BERNAL ROMERO DANILO BENJAMIN', course: '10 EGB B', level: 'Básica Superior' },
   { code: '02690', name: 'BRAVO QUITO ISAAC FERNANDO', course: '10 EGB B', level: 'Básica Superior' },
+  { code: '02566', name: 'CABRERA MORENO SOFIA ALEJANDRA', course: '10 EGB B', level: 'Básica Superior' },
   { code: '02548', name: 'CARRION CORDERO AGUSTINA', course: '10 EGB B', level: 'Básica Superior' },
   { code: '03493', name: 'CASTILLO MALDONADO SOFIA', course: '10 EGB B', level: 'Básica Superior' },
   { code: '02765', name: 'FLORES FIGUEROA FRANCISCO NICANOR', course: '10 EGB B', level: 'Básica Superior' },
@@ -214,6 +217,7 @@ export const STUDENTS_DATA = [
   { code: '03369', name: 'ARIAS GOMEZCOELLO VIOLETA CATALINA', course: '10 EGB A', level: 'Básica Superior' },
   { code: '03501', name: 'ASTUDILLO HURTADO DANNA PAOLA', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02757', name: 'BACULIMA CHUNCHI MARTIN ANDRES', course: '10 EGB A', level: 'Básica Superior' },
+  { code: '03160', name: 'BARRERA RAMÓN JOSE DAVID', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02586', name: 'BRAVO BARRERA GABRIEL BENJAMIN', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02762', name: 'CRESPO SILVA JOAQUIN', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02583', name: 'GUTIÉRREZ SERRANO OLIVIA', course: '10 EGB A', level: 'Básica Superior' },
@@ -225,6 +229,7 @@ export const STUDENTS_DATA = [
   { code: '02559', name: 'PEREZ SIGCHA MARTINA ALEJANDRA', course: '10 EGB A', level: 'Básica Superior' },
   { code: '03006', name: 'PURUNCAJAS CASTILLO FAVIO ESTEBAN', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02577', name: 'ROJAS PESANTEZ DANNA ISABELLA', course: '10 EGB A', level: 'Básica Superior' },
+  { code: '03747', name: 'SANCHEZ SACOTO BRIANNA VALESKA', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02546', name: 'SIDDONS PINOS JULIAN', course: '10 EGB A', level: 'Básica Superior' },
   { code: '02552', name: 'TORRES VELETANGA ARIANA ISABELLA', course: '10 EGB A', level: 'Básica Superior' },
   { code: '03707', name: 'ULLOA MACHADO MANUELA', course: '10 EGB A', level: 'Básica Superior' },

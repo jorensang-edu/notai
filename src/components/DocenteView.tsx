@@ -15,7 +15,7 @@ import {
   canStudentRegisterImprovement,
   getStudentGlobalImprovementStats
 } from '../utils';
-import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus } from 'lucide-react';
+import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { auth } from '../firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
@@ -31,18 +31,28 @@ import { TEACHER_MATRIX } from '../teacherMatrix';
 export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) {
   const { courseParams, setCourseParams, students, activities, grades, addActivity, updateGrade, deleteActivity, updateActivity, classNotes, updateClassNote } = store;
   
+  const teacherInfo = useMemo(() => {
+    return teacherCode ? TEACHER_MATRIX[teacherCode] : undefined;
+  }, [teacherCode]);
+
+  const teacherName = teacherInfo?.name || courseParams.teacher || 'Docente Principal';
+
+  // Keep courseParams.teacher in sync with teacher matrix
+  useEffect(() => {
+    if (teacherInfo?.name && courseParams.teacher !== teacherInfo.name) {
+      setCourseParams({ ...courseParams, teacher: teacherInfo.name });
+    }
+  }, [teacherInfo?.name, courseParams, setCourseParams]);
+
   const initialSelection = useMemo(() => {
-    if (teacherCode) {
-      const teacherInfo = TEACHER_MATRIX[teacherCode];
-      if (teacherInfo && Array.isArray(teacherInfo.permissions) && teacherInfo.permissions.length > 0) {
-        return {
-          subject: teacherInfo.permissions[0].subject as SubjectName,
-          course: teacherInfo.permissions[0].courses[0] as CourseName
-        };
-      }
+    if (teacherCode && teacherInfo && Array.isArray(teacherInfo.permissions) && teacherInfo.permissions.length > 0) {
+      return {
+        subject: teacherInfo.permissions[0].subject as SubjectName,
+        course: teacherInfo.permissions[0].courses[0] as CourseName
+      };
     }
     return { subject: 'Matemáticas' as SubjectName, course: '3 BACH. B' as CourseName };
-  }, [teacherCode]);
+  }, [teacherCode, teacherInfo]);
 
   const [selectedCourse, setSelectedCourse] = useState<CourseName>(initialSelection.course);
   const [selectedSubject, setSelectedSubject] = useState<SubjectName>(initialSelection.subject);
@@ -82,8 +92,8 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
   const [selectedComponent, setSelectedComponent] = useState<EvaluationComponent | 'ALL'>('ALL');
   const [selectedActivityId, setSelectedActivityId] = useState<string | 'ALL'>('ALL');
   const [activeView, setActiveView] = useState<'registro' | 'matriz' | 'stats'>('registro');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(true);
-const [searchQuery, setSearchQuery] = useState('');
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
 
   const filteredStudents = useMemo(() => {
@@ -207,7 +217,9 @@ const [searchQuery, setSearchQuery] = useState('');
       setSelectedActivityId(newAct.id);
     }
     setActiveView('registro');
-    setIsMobileMenuOpen(false);
+    if (window.innerWidth < 768) {
+      setIsSidebarVisible(false);
+    }
   };
 
   const handleGradeChange = (
@@ -364,7 +376,7 @@ const [searchQuery, setSearchQuery] = useState('');
     data.push([]);
     data.push(['Paralelo:', selectedCourse, 'AÑO LECTIVO', courseParams.period]);
     data.push(['Asignatura:', currentSubject, courseParams.trimestre]);
-    data.push(['Docente:', courseParams.teacher]);
+    data.push(['Docente:', teacherName]);
     data.push([]);
     
     // Header row for columns
@@ -466,6 +478,12 @@ const [searchQuery, setSearchQuery] = useState('');
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold tracking-tight">NotAI <span className="text-blue-400 font-medium text-sm ml-2">Panel Docente</span></h1>
+              {teacherInfo && (
+                <span className="text-blue-300 text-xs font-bold px-2.5 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                  {teacherInfo.name} ({teacherCode})
+                </span>
+              )}
               {isReadOnlyUser && (
                 <span className="text-amber-400 text-xs font-semibold px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
                   Solo Lectura (RWCV9)
@@ -473,7 +491,7 @@ const [searchQuery, setSearchQuery] = useState('');
               )}
             </div>
             <p className="text-xs text-slate-400 uppercase tracking-widest">
-              {isReadOnlyUser ? 'Consulta de Calificaciones' : 'Gestión de Calificaciones'}
+              {isReadOnlyUser ? 'Consulta de Calificaciones' : `Docente: ${teacherName}`}
             </p>
           </div>
         </div>
@@ -493,30 +511,69 @@ const [searchQuery, setSearchQuery] = useState('');
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      {/* Mobile Top Controls Bar */}
+      <div className="md:hidden flex items-center justify-between bg-[#0f172a] border-b border-white/10 px-4 py-3 text-slate-200 shrink-0 z-20 shadow-md">
         <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="md:hidden flex items-center justify-between bg-[#0f172a] border-b border-white/10 p-4 text-slate-200 font-semibold shrink-0 z-20 shadow-md"
+          onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+          className="flex items-center gap-2 text-xs font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 px-3 py-1.5 rounded-lg transition-colors"
         >
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-5 h-5 text-blue-400" />
-            Configuración y Filtros
-          </div>
-          {isMobileMenuOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          {isSidebarVisible ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+          <span>{isSidebarVisible ? 'Ocultar Panel' : 'Configuración y Filtros'}</span>
         </button>
+        <span className="text-xs font-medium text-slate-400 truncate max-w-[170px]">
+          {selectedCourse} • {currentSubject}
+        </span>
+      </div>
 
-        <aside className={`w-full md:w-64 bg-[#0f172a] md:bg-white/5 backdrop-blur-lg border-b md:border-b-0 md:border-r border-white/10 p-6 flex-col gap-4 md:p-8 shrink-0 overflow-y-auto ${isMobileMenuOpen ? 'flex absolute md:relative z-10 top-[60px] md:top-0 bottom-0 left-0 right-0 md:right-auto' : 'hidden md:flex'}`}>
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Mobile Backdrop Overlay */}
+        {isSidebarVisible && (
+          <div 
+            className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-sm transition-opacity" 
+            onClick={() => setIsSidebarVisible(false)} 
+          />
+        )}
+
+        {/* Collapsible Sidebar for Desktop & Mobile */}
+        <aside className={`
+          ${isSidebarVisible ? 'flex fixed md:static inset-y-0 left-0 z-40 w-80 max-w-[85vw] md:w-72 lg:w-80' : 'hidden'}
+          bg-[#0b1329] md:bg-white/5 backdrop-blur-xl border-r border-white/10 p-6 md:p-8 flex-col gap-4 shrink-0 overflow-y-auto shadow-2xl md:shadow-none transition-all duration-300
+        `}>
+          {/* Header with collapse button */}
+          <div className="flex items-center justify-between pb-3 mb-1 border-b border-white/10 shrink-0">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Configuración</span>
+            </div>
+            <button
+              onClick={() => setIsSidebarVisible(false)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 text-xs font-medium transition-all"
+              title="Ocultar panel hacia la izquierda"
+            >
+              <PanelLeftClose className="w-4 h-4 text-blue-400" />
+              <span>Ocultar</span>
+            </button>
+          </div>
+
           <div className="space-y-4">
             <p className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Contexto Actual</p>
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
               <div>
-                <label className="block text-[11px] sm:text-xs text-slate-500 uppercase">Docente</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] sm:text-xs text-slate-500 uppercase">Docente</label>
+                  {teacherCode && (
+                    <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                      {teacherCode}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
-                  value={courseParams.teacher}
+                  value={teacherName}
                   onChange={(e) => setCourseParams({ ...courseParams, teacher: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   placeholder="Nombre del docente"
+                  readOnly={!!teacherInfo}
                   disabled={isUnauthorized}
                 />
               </div>
@@ -529,9 +586,9 @@ const [searchQuery, setSearchQuery] = useState('');
                     setSelectedSubject(newSub);
                     setSelectedActivityId('ALL');
                     if (teacherCode) {
-                      const teacherInfo = TEACHER_MATRIX[teacherCode];
-                      if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
-                        const permittedSub = teacherInfo.permissions.find(p => p.subject === newSub);
+                      const tInfo = TEACHER_MATRIX[teacherCode];
+                      if (tInfo && Array.isArray(tInfo.permissions)) {
+                        const permittedSub = tInfo.permissions.find(p => p.subject === newSub);
                         if (permittedSub && !permittedSub.courses.includes(selectedCourse)) {
                           setSelectedCourse(permittedSub.courses[0] as CourseName);
                         }
@@ -549,9 +606,9 @@ const [searchQuery, setSearchQuery] = useState('');
                     
                     let allowedSubjects = allSubjectsList;
                     if (teacherCode) {
-                      const teacherInfo = TEACHER_MATRIX[teacherCode];
-                      if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
-                        const permitted = new Set(teacherInfo.permissions.map(p => p.subject));
+                      const tInfo = TEACHER_MATRIX[teacherCode];
+                      if (tInfo && Array.isArray(tInfo.permissions)) {
+                        const permitted = new Set(tInfo.permissions.map(p => p.subject));
                         allowedSubjects = allSubjectsList.filter(sub => permitted.has(sub));
                       }
                     }
@@ -569,7 +626,9 @@ const [searchQuery, setSearchQuery] = useState('');
                   onChange={(e) => {
                     setSelectedCourse(e.target.value as CourseName);
                     setSelectedActivityId('ALL');
-                    setIsMobileMenuOpen(false);
+                    if (window.innerWidth < 768) {
+                      setIsSidebarVisible(false);
+                    }
                   }}
                   className="w-full mt-1 px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-blue-500 text-sm font-semibold text-slate-200"
                 >
@@ -581,9 +640,9 @@ const [searchQuery, setSearchQuery] = useState('');
 
                     let allowedCourses = allCourses;
                     if (teacherCode) {
-                      const teacherInfo = TEACHER_MATRIX[teacherCode];
-                      if (teacherInfo && Array.isArray(teacherInfo.permissions)) {
-                        const permittedSub = teacherInfo.permissions.find(p => p.subject === currentSubject);
+                      const tInfo = TEACHER_MATRIX[teacherCode];
+                      if (tInfo && Array.isArray(tInfo.permissions)) {
+                        const permittedSub = tInfo.permissions.find(p => p.subject === currentSubject);
                         if (permittedSub) {
                           const permitted = new Set(permittedSub.courses);
                           allowedCourses = allCourses.filter(c => permitted.has(c));
@@ -619,7 +678,9 @@ const [searchQuery, setSearchQuery] = useState('');
               onChange={(e) => {
                 setSelectedComponent(e.target.value as any);
                 setSelectedActivityId('ALL');
-                setIsMobileMenuOpen(false);
+                if (window.innerWidth < 768) {
+                  setIsSidebarVisible(false);
+                }
               }}
               className="w-full px-4 py-3 bg-[#0f172a] border border-white/10 rounded-xl focus:outline-none focus:border-blue-500 text-sm text-slate-300"
             >
@@ -635,7 +696,9 @@ const [searchQuery, setSearchQuery] = useState('');
               onChange={(e) => {
                 setSelectedActivityId(e.target.value);
                 if (e.target.value !== 'ALL') {
-                  setIsMobileMenuOpen(false);
+                  if (window.innerWidth < 768) {
+                    setIsSidebarVisible(false);
+                  }
                   setActiveView('registro');
                 }
               }}
@@ -650,7 +713,9 @@ const [searchQuery, setSearchQuery] = useState('');
             <button
               onClick={() => {
                 setActiveView(activeView === 'matriz' ? 'registro' : 'matriz');
-                setIsMobileMenuOpen(false);
+                if (window.innerWidth < 768) {
+                  setIsSidebarVisible(false);
+                }
               }}
               className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-sm transition-colors border font-semibold ${activeView === 'matriz' ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-black/20 hover:bg-white/10 text-slate-300 border-white/10'}`}
             >
@@ -660,7 +725,9 @@ const [searchQuery, setSearchQuery] = useState('');
             <button
               onClick={() => {
                 setActiveView(activeView === 'stats' ? 'registro' : 'stats');
-                setIsMobileMenuOpen(false);
+                if (window.innerWidth < 768) {
+                  setIsSidebarVisible(false);
+                }
               }}
               className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-sm transition-colors border font-semibold ${activeView === 'stats' ? 'bg-purple-600 text-white border-purple-500 shadow-lg shadow-purple-500/20' : 'bg-black/20 hover:bg-white/10 text-slate-300 border-white/10'}`}
             >
@@ -671,6 +738,34 @@ const [searchQuery, setSearchQuery] = useState('');
         </aside>
 
         <section className="flex-1 p-4 md:p-8 flex flex-col gap-6 overflow-hidden">
+          {/* Top Toolbar with Panel Toggle for Desktop and Mobile */}
+          <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
+            <div className="flex items-center gap-2">
+              {!isSidebarVisible && (
+                <button
+                  onClick={() => setIsSidebarVisible(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold transition-all shrink-0 shadow-sm"
+                  title="Mostrar panel de configuración y filtros"
+                >
+                  <PanelLeftOpen className="w-4 h-4 text-blue-400" />
+                  <span>Mostrar Filtros</span>
+                </button>
+              )}
+              {isSidebarVisible && (
+                <button
+                  onClick={() => setIsSidebarVisible(false)}
+                  className="hidden md:flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 border border-white/10 rounded-xl text-xs font-medium transition-all shrink-0"
+                  title="Ocultar panel hacia la izquierda"
+                >
+                  <PanelLeftClose className="w-4 h-4 text-blue-400" />
+                  <span>Ocultar Filtros</span>
+                </button>
+              )}
+              <div className="text-xs text-slate-400 hidden sm:block">
+                <span className="font-semibold text-slate-200">{selectedCourse}</span> • <span>{currentSubject}</span> • <span className="text-blue-400">{courseParams.trimestre}</span>
+              </div>
+            </div>
+          </div>
           {isReadOnlyUser ? (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 shrink-0">
               <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />

@@ -30,12 +30,15 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
 
   const [inputCode, setInputCode] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<Level>('Básica Superior');
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('ALL');
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
   const [error, setError] = useState('');
   
   const [selectedSubject, setSelectedSubject] = useState<SubjectName>('Matemáticas');
   const [selectedTrimestre, setSelectedTrimestre] = useState<Trimestre | 'ALL'>('ALL');
   const [selectedComponent, setSelectedComponent] = useState<EvaluationComponent | 'ALL'>('ALL');
+
+  const isTeacherOrAdmin = domainType === 'docente' || domainType === 'admin';
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,15 +47,19 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
     // 1. Verify institutional email domain
     const emailVal = validateEmailForRole(userEmail, 'estudiante');
     if (!emailVal.isValid) {
-      setError(emailVal.errorMessage || 'Acceso restringido: Se requiere una cuenta @stu.cedfi.edu.ec.');
+      setError(emailVal.errorMessage || 'Acceso restringido: Se requiere una cuenta institucional.');
       return;
     }
 
-    // 2. Find student
-    const student = students.find(s => s.code === cleanCode && s.level === selectedLevel);
+    // 2. Find student (auto-detect level if needed)
+    const student = students.find(s => s.code === cleanCode);
     if (!student) {
-      setError(`No se encontró un estudiante con el código ${cleanCode} en el nivel ${selectedLevel}.`);
+      setError(`No se encontró un estudiante con el código ${cleanCode}.`);
       return;
+    }
+
+    if (student.level !== selectedLevel) {
+      setSelectedLevel(student.level);
     }
 
     // 3. Verify account-to-code binding
@@ -62,7 +69,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
       return;
     }
 
-    // 4. Save binding to lock this student profile to this Google account
+    // 4. Save binding to lock this student profile to this Google account (skipped for teachers)
     saveCodeBinding(userEmail, cleanCode, 'estudiante');
     setCurrentStudent(student);
     setError('');
@@ -193,6 +200,50 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
               <span className="font-mono font-semibold text-emerald-300 truncate max-w-[200px]">{userEmail}</span>
             </div>
           )}
+
+          {isTeacherOrAdmin && (
+            <div className="mb-6 bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-blue-300">Modo Consulta Docente / Tutor</span>
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">Autorizado</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mb-2.5">
+                Seleccione un curso y estudiante para cargar directamente su boletín, o digite su código abajo.
+              </p>
+              <div className="space-y-2">
+                <select
+                  value={selectedCourseFilter}
+                  onChange={(e) => setSelectedCourseFilter(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#0f172a] border border-white/10 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">-- Seleccione Curso / Paralelo --</option>
+                  {Array.from(new Set(students.map(s => s.course))).sort().map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {selectedCourseFilter !== 'ALL' && (
+                  <select
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const st = students.find(s => s.code === e.target.value);
+                      if (st) {
+                        setInputCode(st.code);
+                        setSelectedLevel(st.level);
+                        setCurrentStudent(st);
+                        setSelectedSubject('Matemáticas');
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-[#0f172a] border border-blue-500/40 rounded-lg text-xs text-blue-200 focus:outline-none focus:border-blue-400"
+                  >
+                    <option value="">-- Seleccionar Estudiante ({students.filter(s => s.course === selectedCourseFilter).length}) --</option>
+                    {students.filter(s => s.course === selectedCourseFilter).map(s => (
+                      <option key={s.id} value={s.code}>{s.name} ({s.code})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
           
           <form onSubmit={handleLogin}>
             <div className="mb-4">
@@ -244,7 +295,14 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
             <span className="font-bold text-xl text-white">N</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">NotAI <span className="text-emerald-400 font-medium text-sm ml-2">Portal Estudiante</span></h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-tight">NotAI <span className="text-emerald-400 font-medium text-sm ml-2">Portal Estudiante</span></h1>
+              {isTeacherOrAdmin && (
+                <span className="text-blue-300 text-xs font-semibold px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full">
+                  Consulta Docente / Tutor
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 uppercase tracking-widest">Boletín Día a Día</p>
           </div>
         </div>
@@ -254,13 +312,32 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
             <span className="text-sm font-bold">{today}</span>
           </div>
           <div className="h-8 w-px bg-white/10 hidden sm:block"></div>
-          <button
-            onClick={() => setCurrentStudent(null)}
-            className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-lg transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="text-sm font-medium hidden sm:block">Salir</span>
-          </button>
+          {isTeacherOrAdmin ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentStudent(null)}
+                className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-lg text-xs font-semibold transition-colors"
+                title="Volver a la selección de estudiante"
+              >
+                Cambiar Estudiante
+              </button>
+              <button
+                onClick={onLogout}
+                className="flex items-center space-x-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-lg text-xs transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onLogout}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-lg transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-sm font-medium hidden sm:block">Salir</span>
+            </button>
+          )}
         </div>
       </header>
 

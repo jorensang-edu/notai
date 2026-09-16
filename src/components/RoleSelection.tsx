@@ -236,7 +236,7 @@ export function RoleSelection({ onSelectRole }: RoleSelectionProps) {
             Consulta personalizada del rendimiento académico, desglose de notas y refuerzos.
           </p>
           <span className="mt-4 text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">
-            Requiere @stu.cedfi.edu.ec
+            Acceso Estudiantes, Docentes y Tutores
           </span>
         </button>
       </div>
