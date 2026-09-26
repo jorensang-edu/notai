@@ -23,9 +23,11 @@ import {
   BookOpen,
   Filter,
   Calendar,
-  Layers
+  Layers,
+  Mail
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { EmailNotificationModal } from './EmailNotificationModal';
 
 interface TutoriaViewProps {
   store: ReturnType<typeof useAppStore>;
@@ -84,6 +86,7 @@ export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [onlyAlertsFilter, setOnlyAlertsFilter] = useState(false);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // List of students in selected course
   const courseStudents = useMemo(() => {
@@ -306,6 +309,15 @@ export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+            title="Enviar y Probar Reportes Semanales por Correo (Resend & Cron)"
+          >
+            <Mail className="w-4 h-4" />
+            <span>Notificaciones Semanales</span>
+          </button>
+
           <button
             onClick={handleExportExcel}
             disabled={!consolidatedData || consolidatedData.subjectsSummary.length === 0}
@@ -810,6 +822,12 @@ export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
           )}
         </main>
       </div>
+
+      <EmailNotificationModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        store={store}
+      />
     </div>
   );
 }

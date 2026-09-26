@@ -11,9 +11,10 @@ import { TutoriaView } from './components/TutoriaView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppStore } from './store';
 import { Role } from './types';
-import { Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, LogIn, ShieldCheck, Mail } from 'lucide-react';
 import { auth, signInWithGoogle } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { EmailNotificationModal } from './components/EmailNotificationModal';
 
 export default function App() {
   const [role, setRole] = useState<Role>('none');
@@ -21,6 +22,7 @@ export default function App() {
   const [tutorCode, setTutorCode] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const store = useAppStore();
 
   useEffect(() => {
@@ -113,6 +115,16 @@ export default function App() {
         )}
       </div>
 
+      {/* Email Notifications Button */}
+      <button
+        onClick={() => setShowEmailModal(true)}
+        className="fixed bottom-6 right-22 z-50 p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-indigo-400"
+        title="Reportes Semanales por Correo (Resend & Cron)"
+        aria-label="Reportes Semanales por Correo"
+      >
+        <Mail className="w-6 h-6" />
+      </button>
+
       {/* Accessibility Floating Button */}
       <button
         onClick={store.toggleHighContrast}
@@ -122,6 +134,12 @@ export default function App() {
       >
         {store.highContrast ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
       </button>
+
+      <EmailNotificationModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        store={store}
+      />
     </div>
   );
 }
