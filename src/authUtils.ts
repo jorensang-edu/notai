@@ -6,7 +6,15 @@ export interface EmailValidationResult {
   errorMessage?: string;
 }
 
-const ADMIN_EMAIL = 'jorensang@gmail.com';
+export const ADMIN_EMAIL = 'jorensang@gmail.com';
+
+/**
+ * Checks if a given email belongs to the application administrator (Jorge Sangurima).
+ */
+export function isAdminUser(email?: string | null): boolean {
+  if (!email) return false;
+  return email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase();
+}
 
 /**
  * Categorizes an email address according to institutional domains:

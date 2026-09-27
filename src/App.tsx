@@ -15,6 +15,7 @@ import { Eye, EyeOff, LogIn, ShieldCheck, Mail } from 'lucide-react';
 import { auth, signInWithGoogle } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { EmailNotificationModal } from './components/EmailNotificationModal';
+import { isAdminUser } from './authUtils';
 
 export default function App() {
   const [role, setRole] = useState<Role>('none');
@@ -24,6 +25,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const store = useAppStore();
+
+  const isAdmin = isAdminUser(user?.email);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -102,6 +105,7 @@ export default function App() {
               <TutoriaView 
                 store={store} 
                 tutorCode={tutorCode} 
+                isAdmin={isAdmin}
                 onLogout={() => { setRole('none'); setTutorCode(''); }} 
               />
             )}
@@ -115,15 +119,17 @@ export default function App() {
         )}
       </div>
 
-      {/* Email Notifications Button */}
-      <button
-        onClick={() => setShowEmailModal(true)}
-        className="fixed bottom-6 right-22 z-50 p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-indigo-400"
-        title="Reportes Semanales por Correo (Resend & Cron)"
-        aria-label="Reportes Semanales por Correo"
-      >
-        <Mail className="w-6 h-6" />
-      </button>
+      {/* Email Notifications Button - Solo visible para el Administrador (jorensang@gmail.com) */}
+      {isAdmin && (
+        <button
+          onClick={() => setShowEmailModal(true)}
+          className="fixed bottom-6 right-22 z-50 p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-indigo-400"
+          title="Panel de Administración: Reportes Semanales (Resend)"
+          aria-label="Reportes Semanales por Correo"
+        >
+          <Mail className="w-6 h-6" />
+        </button>
+      )}
 
       {/* Accessibility Floating Button */}
       <button
@@ -135,11 +141,13 @@ export default function App() {
         {store.highContrast ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
       </button>
 
-      <EmailNotificationModal
-        isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
-        store={store}
-      />
+      {isAdmin && (
+        <EmailNotificationModal
+          isOpen={showEmailModal}
+          onClose={() => setShowEmailModal(false)}
+          store={store}
+        />
+      )}
     </div>
   );
 }

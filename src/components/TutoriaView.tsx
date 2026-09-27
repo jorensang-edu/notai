@@ -28,11 +28,14 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { EmailNotificationModal } from './EmailNotificationModal';
+import { isAdminUser } from '../authUtils';
+import { auth } from '../firebase';
 
 interface TutoriaViewProps {
   store: ReturnType<typeof useAppStore>;
   tutorCode: string;
   onLogout: () => void;
+  isAdmin?: boolean;
 }
 
 const ALL_SUBJECTS: SubjectName[] = [
@@ -51,8 +54,9 @@ const ALL_SUBJECTS: SubjectName[] = [
   'Investigación'
 ];
 
-export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
+export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }: TutoriaViewProps) {
   const { students, activities, grades, courseParams, highContrast } = store;
+  const isAdmin = propIsAdmin ?? isAdminUser(auth.currentUser?.email);
 
   // Retrieve tutor assignment from matrix
   const tutorInfo = TUTOR_MATRIX[tutorCode];
@@ -309,14 +313,16 @@ export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowEmailModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
-            title="Enviar y Probar Reportes Semanales por Correo (Resend & Cron)"
-          >
-            <Mail className="w-4 h-4" />
-            <span>Notificaciones Semanales</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowEmailModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+              title="Enviar y Probar Reportes Semanales por Correo (Solo Administrador)"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Notificaciones Semanales</span>
+            </button>
+          )}
 
           <button
             onClick={handleExportExcel}
@@ -823,11 +829,13 @@ export function TutoriaView({ store, tutorCode, onLogout }: TutoriaViewProps) {
         </main>
       </div>
 
-      <EmailNotificationModal
-        isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
-        store={store}
-      />
+      {isAdmin && (
+        <EmailNotificationModal
+          isOpen={showEmailModal}
+          onClose={() => setShowEmailModal(false)}
+          store={store}
+        />
+      )}
     </div>
   );
 }
