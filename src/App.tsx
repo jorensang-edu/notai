@@ -16,6 +16,8 @@ import { auth, signInWithGoogle } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { EmailNotificationModal } from './components/EmailNotificationModal';
 import { isAdminUser } from './authUtils';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 export default function App() {
   const [role, setRole] = useState<Role>('none');
@@ -81,6 +83,10 @@ export default function App() {
                 <LogIn className="w-5 h-5" />
                 Continuar con Google Institucional
               </button>
+
+              <div className="mt-4">
+                <PWAInstallButton variant="banner" />
+              </div>
             </div>
           </div>
         ) : (
@@ -138,6 +144,9 @@ export default function App() {
           store={store}
         />
       )}
+
+      {/* Offline Connectivity Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

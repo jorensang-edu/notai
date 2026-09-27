@@ -10,6 +10,7 @@ import {
   checkCodeBinding, 
   saveCodeBinding 
 } from '../authUtils';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface RoleSelectionProps {
   onSelectRole: (role: Role, code?: string) => void;
@@ -176,6 +177,9 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
               </span>
             )}
 
+            {/* PWA Install Button in Header */}
+            <PWAInstallButton />
+
             <button
               onClick={() => auth.signOut()}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -188,7 +192,7 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
       )}
 
       {/* Main Title */}
-      <div className="text-center mb-10">
+      <div className="text-center mb-8">
         <div className="w-16 h-16 bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto mb-5">
           <span className="font-black text-3xl text-white">N</span>
         </div>
@@ -198,6 +202,11 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
         <p className="text-xs md:text-sm text-slate-400 uppercase tracking-widest max-w-2xl mx-auto">
           Sistema Institucional de Gestión, Tutoría y Calificaciones Académicas
         </p>
+      </div>
+
+      {/* Mobile Install App Banner */}
+      <div className="w-full max-w-5xl mb-6">
+        <PWAInstallButton variant="banner" />
       </div>
 
       {/* 3 Portal Role Cards */}
