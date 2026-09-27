@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserCog, GraduationCap, Lock, X, ShieldCheck, LogOut, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { UserCog, GraduationCap, Lock, X, ShieldCheck, LogOut, AlertCircle, CheckCircle2, Mail } from 'lucide-react';
 import { Role } from '../types';
 import teacherPasswordsJson from '../../public/teacher_passwords.json';
 import { TUTOR_MATRIX } from '../tutorMatrix';
@@ -13,9 +13,10 @@ import {
 
 interface RoleSelectionProps {
   onSelectRole: (role: Role, code?: string) => void;
+  onOpenEmailConfig?: () => void;
 }
 
-export function RoleSelection({ onSelectRole }: RoleSelectionProps) {
+export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelectionProps) {
   const [showTeacherAuth, setShowTeacherAuth] = useState(false);
   const [showTutorAuth, setShowTutorAuth] = useState(false);
   const [password, setPassword] = useState('');
@@ -151,10 +152,22 @@ export function RoleSelection({ onSelectRole }: RoleSelectionProps) {
               </span>
             )}
             {domainType === 'admin' && (
-              <span className="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                Administrador
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Administrador
+                </span>
+                {onOpenEmailConfig && (
+                  <button
+                    onClick={onOpenEmailConfig}
+                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95"
+                    title="Configuración de Mensajes y Reportes Semanales (Resend & Cron)"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Configuración de Mensajes</span>
+                  </button>
+                )}
+              </div>
             )}
             {domainType === 'unknown' && (
               <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">

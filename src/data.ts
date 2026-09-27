@@ -143,12 +143,12 @@ export const STUDENTS_DATA = [
   { code: '02473', name: 'SALAMEA VASQUEZ JULIANA', course: '1 BACH. A', level: 'Bachillerato' },
   { code: '02468', name: 'SANCHEZ GUTIERREZ CRISTIAN ALEJANDRO', course: '1 BACH. A', level: 'Bachillerato' },
   { code: '02426', name: 'SERRANO VAN DER BLIEK ALYSA MIKAYLA', course: '1 BACH. A', level: 'Bachillerato' },
-  { code: '03728', name: 'SINCHI PAZ ALLAN ISRAEL', course: '1 BACH. A', level: 'Bachillerato' },
   { code: '03732', name: 'SUAREZ CRIOLLO DENNYS DAVID', course: '1 BACH. A', level: 'Bachillerato' },
   { code: '03496', name: 'VELEPUCHA ZHICAY ALEX NICOLAS', course: '1 BACH. A', level: 'Bachillerato' },
 
   // 9 EGB B
   { code: '02686', name: 'CHABLAY ALVARRACIN ISMAEL FERNANDO', course: '9 EGB B', level: 'Básica Superior' },
+  { code: '02661', name: 'COBOS ORTIZ JUAN MIGUEL', course: '9 EGB B', level: 'Básica Superior' },
   { code: '03628', name: 'GORDILLO MENDOZA ASHLEY FERNANDA', course: '9 EGB B', level: 'Básica Superior' },
   { code: '03390', name: 'JACOME NAVARRETE DEBORA SOFIA', course: '9 EGB B', level: 'Básica Superior' },
   { code: '02755', name: 'LEON RAMON LEONARDO SEBASTIAN', course: '9 EGB B', level: 'Básica Superior' },

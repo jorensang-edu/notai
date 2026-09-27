@@ -317,10 +317,10 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
             <button
               onClick={() => setShowEmailModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
-              title="Enviar y Probar Reportes Semanales por Correo (Solo Administrador)"
+              title="Configuración de Mensajes y Reportes Semanales (Solo Administrador)"
             >
               <Mail className="w-4 h-4" />
-              <span>Notificaciones Semanales</span>
+              <span>Configuración de Mensajes</span>
             </button>
           )}
 
