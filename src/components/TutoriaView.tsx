@@ -69,7 +69,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
           <AlertOctagon className="w-16 h-16 text-rose-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">Código No Autorizado</h2>
           <p className="text-slate-300 text-sm mb-6">
-            El código ingresado <span className="font-mono font-bold text-rose-400">({tutorCode})</span> no cuenta con permisos registrados para el rol de Tutor.
+            El código ingresado no cuenta con permisos registrados para el rol de Tutor.
           </p>
           <button
             onClick={onLogout}
@@ -290,10 +290,10 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
   };
 
   return (
-    <div className={`flex flex-col flex-1 h-full overflow-hidden ${highContrast ? 'bg-black text-white' : 'bg-slate-950 text-slate-100'}`}>
+    <div className={`flex flex-col flex-1 h-full overflow-hidden ${highContrast ? 'bg-white text-[#0f2b5c]' : 'bg-slate-950 text-slate-100'}`}>
       {/* Top Navigation Bar */}
       <header className={`px-6 py-4 border-b flex flex-wrap items-center justify-between gap-4 z-20 ${
-        highContrast ? 'border-white/20 bg-zinc-900' : 'border-slate-800 bg-slate-900/60 backdrop-blur-md'
+        highContrast ? 'border-[#1e3a8a]/30 bg-white' : 'border-slate-800 bg-slate-900/60 backdrop-blur-md'
       }`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
@@ -307,7 +307,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Acompañamiento consolidado de materias y alertas académicas • Código: <span className="font-mono text-purple-300 font-semibold">{tutorCode}</span>
+              Acompañamiento consolidado de materias y alertas académicas
             </p>
           </div>
         </div>
@@ -348,7 +348,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar: Student & Course Selector */}
         <aside className={`w-80 border-r flex flex-col shrink-0 overflow-hidden ${
-          highContrast ? 'border-white/20 bg-zinc-950' : 'border-slate-800/80 bg-slate-900/30'
+          highContrast ? 'border-[#1e3a8a]/30 bg-white' : 'border-slate-800/80 bg-slate-900/30'
         }`}>
           {/* Course Selector Restricted by Matrix */}
           <div className="p-4 border-b border-slate-800/80 space-y-3">
@@ -429,7 +429,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
         <main className="flex-1 flex flex-col overflow-y-auto p-6 space-y-6 custom-scrollbar">
           {/* Filters Bar: Trimestre & Componente */}
           <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 ${
-            highContrast ? 'border-white/20 bg-zinc-900' : 'border-slate-800 bg-slate-900/40 backdrop-blur-sm'
+            highContrast ? 'border-[#1e3a8a]/30 bg-white' : 'border-slate-800 bg-slate-900/40 backdrop-blur-sm'
           }`}>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold uppercase tracking-wider">
@@ -492,7 +492,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
             <>
               {/* Student Header Profile */}
               <div className={`p-6 rounded-2xl border flex flex-wrap items-center justify-between gap-4 ${
-                highContrast ? 'border-white/20 bg-zinc-900' : 'border-slate-800/80 bg-gradient-to-r from-slate-900/90 to-purple-950/20'
+                highContrast ? 'border-[#1e3a8a]/30 bg-white' : 'border-slate-800/80 bg-gradient-to-r from-slate-900/90 to-purple-950/20'
               }`}>
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">

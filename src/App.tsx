@@ -129,8 +129,12 @@ export default function App() {
       {/* Accessibility Floating Button */}
       <button
         onClick={store.toggleHighContrast}
-        className="fixed bottom-6 right-6 z-50 p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-blue-400"
-        title="Modo Alto Contraste (Accesibilidad)"
+        className={`fixed bottom-6 right-6 z-50 p-4 rounded-full shadow-2xl transition-transform hover:scale-110 flex items-center justify-center focus:outline-none focus:ring-4 ${
+          store.highContrast
+            ? 'high-contrast-toggle-btn focus:ring-blue-900'
+            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 focus:ring-blue-400'
+        }`}
+        title="Modo Alto Contraste (Fondo blanco y textos azul oscuro)"
         aria-label="Alternar modo de alto contraste"
       >
         {store.highContrast ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}

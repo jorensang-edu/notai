@@ -349,7 +349,11 @@ export function groupLowGradesByTutorAndLevel(items: LowGradeAlertItem[]): Tutor
 /**
  * Generates modern, clean, responsive HTML email for a Tutor.
  */
-export function generateTutorReportHtml(report: TutorReportData, weekPeriodText: string): string {
+export function generateTutorReportHtml(
+  report: TutorReportData, 
+  weekPeriodText: string,
+  redirectNotice?: string
+): string {
   const totalAlerts = report.alerts.length;
   const lowestGrade = totalAlerts > 0 ? Math.min(...report.alerts.map(a => a.grade)).toFixed(2) : '-';
   const averageGrade = totalAlerts > 0 ? (report.alerts.reduce((acc, a) => acc + a.grade, 0) / totalAlerts).toFixed(2) : '-';
@@ -434,6 +438,18 @@ export function generateTutorReportHtml(report: TutorReportData, weekPeriodText:
         Período evaluado: <strong style="color: #ffffff;">${weekPeriodText}</strong>
       </p>
     </div>
+
+    ${redirectNotice ? `
+    <!-- Redirect Notice Banner -->
+    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 28px 0 28px;">
+      <div style="font-size: 12px; font-weight: 700; color: #b45309; margin-bottom: 3px;">
+        ⚠️ Aviso de Entrega (Modo Prueba Resend)
+      </div>
+      <div style="font-size: 12px; color: #92400e; line-height: 1.5;">
+        ${redirectNotice}
+      </div>
+    </div>
+    ` : ''}
 
     <!-- Tutor Profile & Context Bar -->
     <div style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 18px 28px;">
@@ -585,7 +601,11 @@ export async function executeWeeklyReportsPipeline(params: {
   // 2. Group by Tutor & Level
   const tutorReports = groupLowGradesByTutorAndLevel(items);
 
-  // 3. Dispatch emails
+  // Fallback recipient (used when Resend is on free tier without verified custom domain)
+  const defaultFallbackEmail = (typeof process !== 'undefined' ? process.env?.TEST_NOTIFICATION_EMAIL : undefined) || 'jorensang@gmail.com';
+  const isResendOnboardingDomain = Boolean(fromEmail && fromEmail.includes('onboarding@resend.dev'));
+
+  // 3. Dispatch emails with throttling and unverified domain fallback
   const dispatchResults: {
     tutorName: string;
     tutorEmail: string;
@@ -595,12 +615,36 @@ export async function executeWeeklyReportsPipeline(params: {
     success: boolean;
     resendId?: string;
     error?: string;
+    redirected?: boolean;
+    redirectReason?: string;
   }[] = [];
 
-  for (const report of tutorReports) {
-    const targetEmail = overrideRecipientEmail ? overrideRecipientEmail.trim() : report.tutorEmail;
-    const html = generateTutorReportHtml(report, weekPeriodText);
-    const subject = `[CEDFI NotAI] Alertas Académicas Semanales (< 7/10) - ${report.tutorName} (${report.courses.join(', ')})`;
+  for (let i = 0; i < tutorReports.length; i++) {
+    const report = tutorReports[i];
+
+    // Throttle between requests (Resend has 2 requests/sec limit on free tier)
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    let targetEmail = overrideRecipientEmail ? overrideRecipientEmail.trim() : report.tutorEmail;
+    let redirected = false;
+    let redirectReason: string | undefined = undefined;
+
+    // If using Resend default onboarding domain and target is external, redirect to account email to prevent API 403
+    if (!overrideRecipientEmail && isResendOnboardingDomain && !targetEmail.toLowerCase().includes('gmail.com')) {
+      targetEmail = defaultFallbackEmail;
+      redirected = true;
+      redirectReason = `Redirigido a ${defaultFallbackEmail} porque el remitente actual es onboarding@resend.dev y requiere verificar el dominio institucional @cedfi.edu.ec en resend.com/domains para enviar directamente a los tutores.`;
+    }
+
+    const redirectNotice = redirected 
+      ? `Este reporte corresponde a la tutoría de <strong>${report.tutorName}</strong> (${report.tutorEmail}). Fue entregado a <strong>${targetEmail}</strong> debido a que el remitente actual es de pruebas (<em>onboarding@resend.dev</em>). Para que llegue directamente al correo del docente, verifique su dominio institucional en <strong>resend.com/domains</strong> y configure <code>RESEND_FROM_EMAIL</code>.`
+      : undefined;
+
+    const html = generateTutorReportHtml(report, weekPeriodText, redirectNotice);
+    const subjectPrefix = redirected ? `[Tutor: ${report.tutorName}] ` : '';
+    const subject = `${subjectPrefix}[CEDFI NotAI] Alertas Académicas Semanales (< 7/10) - ${report.tutorName} (${report.courses.join(', ')})`;
 
     try {
       const res = await sendResendEmail({
@@ -619,8 +663,46 @@ export async function executeWeeklyReportsPipeline(params: {
         alertsCount: report.alerts.length,
         success: true,
         resendId: res.id,
+        redirected,
+        redirectReason,
       });
     } catch (err: any) {
+      const errMsg = err?.message || String(err);
+
+      // If failed due to unverified testing domain restriction, re-attempt delivery to the fallback test address
+      if (!redirected && (errMsg.includes('only send testing emails') || errMsg.includes('testing email address'))) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 600));
+
+          const fallbackNotice = `Este reporte corresponde a <strong>${report.tutorName}</strong> (${report.tutorEmail}). Fue redirigido automáticamente a <strong>${defaultFallbackEmail}</strong> porque Resend requiere verificar el dominio @cedfi.edu.ec en resend.com/domains antes de enviar correos a destinatarios externos.`;
+          const fallbackHtml = generateTutorReportHtml(report, weekPeriodText, fallbackNotice);
+          const fallbackSubject = `[Tutor: ${report.tutorName}] [CEDFI NotAI] Alertas Académicas Semanales (< 7/10) - ${report.tutorName}`;
+
+          const retryRes = await sendResendEmail({
+            apiKey,
+            from: fromEmail,
+            to: defaultFallbackEmail,
+            subject: fallbackSubject,
+            html: fallbackHtml,
+          });
+
+          dispatchResults.push({
+            tutorName: report.tutorName,
+            tutorEmail: report.tutorEmail,
+            sentTo: defaultFallbackEmail,
+            level: report.level,
+            alertsCount: report.alerts.length,
+            success: true,
+            resendId: retryRes.id,
+            redirected: true,
+            redirectReason: `Redirigido a ${defaultFallbackEmail} (dominio @cedfi.edu.ec no verificado en Resend).`,
+          });
+          continue;
+        } catch {
+          // If retry also failed, record the original error below
+        }
+      }
+
       dispatchResults.push({
         tutorName: report.tutorName,
         tutorEmail: report.tutorEmail,
@@ -628,7 +710,9 @@ export async function executeWeeklyReportsPipeline(params: {
         level: report.level,
         alertsCount: report.alerts.length,
         success: false,
-        error: err?.message || String(err),
+        error: errMsg,
+        redirected,
+        redirectReason,
       });
     }
   }

@@ -27,11 +27,32 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
 
+    let activities: any[] = [];
+    let grades: any[] = [];
+
+    try {
+      const { db, auth } = await import('../src/firebase');
+      const { signInAnonymously } = await import('firebase/auth');
+      const { collection, getDocs } = await import('firebase/firestore');
+
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+      const actsSnap = await getDocs(collection(db, 'activities'));
+      actsSnap.forEach(d => activities.push(d.data()));
+      const gradesSnap = await getDocs(collection(db, 'grades'));
+      gradesSnap.forEach(d => grades.push(d.data()));
+    } catch (dbErr) {
+      console.warn('Advertencia: no se pudieron cargar actividades de Firestore, usando datos simulados:', dbErr);
+    }
+
     const result = await executeWeeklyReportsPipeline({
       apiKey,
       fromEmail,
       overrideRecipientEmail: overrideRecipient,
-      simulated: false,
+      simulated: activities.length === 0,
+      activities,
+      grades,
     });
 
     res.statusCode = 200;

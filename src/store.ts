@@ -80,10 +80,13 @@ export function useAppStore() {
 
   useEffect(() => {
     localStorage.setItem('sirc_highContrast', String(highContrast));
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (highContrast) {
       document.documentElement.classList.add('high-contrast-mode');
+      if (metaThemeColor) metaThemeColor.setAttribute('content', '#ffffff');
     } else {
       document.documentElement.classList.remove('high-contrast-mode');
+      if (metaThemeColor) metaThemeColor.setAttribute('content', '#020617');
     }
   }, [highContrast]);
 

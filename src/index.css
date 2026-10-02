@@ -16,61 +16,172 @@ body, html {
   flex-direction: column;
 }
 
-/* High Contrast Mode Overrides (Accessibility) */
-.high-contrast-mode body,
-.high-contrast-mode #root,
+/* High Contrast Mode Overrides (Accesibilidad: Fondo blanco y textos azul oscuro) */
+html.high-contrast-mode {
+  color-scheme: light;
+  background-color: #ffffff !important;
+}
+
+html.high-contrast-mode body,
+html.high-contrast-mode #root,
 .high-contrast-mode .min-h-screen,
 .high-contrast-mode main,
 .high-contrast-mode aside,
+.high-contrast-mode header,
+.high-contrast-mode nav,
+.high-contrast-mode section,
+.high-contrast-mode article,
+.high-contrast-mode footer,
+.high-contrast-mode form,
 .high-contrast-mode div {
   background-color: #ffffff !important;
-  border-color: #000000 !important;
+  background-image: none !important;
 }
 
+/* ALL text in high contrast mode is dark blue */
+.high-contrast-mode,
 .high-contrast-mode * {
-  color: #000000 !important;
+  color: #0f2b5c !important;
 }
 
-/* Background effects and gradients should be hidden or solid */
-.high-contrast-mode .blur-\[120px\],
-.high-contrast-mode .blur-\[80px\] {
-  display: none !important;
+/* Titles and strong emphasis: deep dark navy blue */
+.high-contrast-mode h1,
+.high-contrast-mode h2,
+.high-contrast-mode h3,
+.high-contrast-mode h4,
+.high-contrast-mode h5,
+.high-contrast-mode h6,
+.high-contrast-mode th,
+.high-contrast-mode strong,
+.high-contrast-mode b {
+  color: #091e42 !important;
+  font-weight: 700 !important;
 }
 
-/* Borders for all containers for structure */
+/* Secondary, paragraphs, spans, labels, lists, code */
+.high-contrast-mode p,
+.high-contrast-mode span,
+.high-contrast-mode label,
+.high-contrast-mode li,
+.high-contrast-mode small,
+.high-contrast-mode code,
+.high-contrast-mode pre {
+  color: #0f2b5c !important;
+}
+
+/* Borders across containers, cards, tables, dividers */
 .high-contrast-mode section,
 .high-contrast-mode header,
 .high-contrast-mode aside,
+.high-contrast-mode nav,
+.high-contrast-mode footer,
 .high-contrast-mode table,
+.high-contrast-mode thead,
+.high-contrast-mode tbody,
+.high-contrast-mode tr,
 .high-contrast-mode th,
-.high-contrast-mode td {
-  border: 1px solid #000000 !important;
+.high-contrast-mode td,
+.high-contrast-mode hr,
+.high-contrast-mode [class*="border"] {
+  border-color: #1e3a8a !important;
 }
 
-/* Inputs, Selects, Buttons */
+/* Tables and cells */
+.high-contrast-mode table {
+  background-color: #ffffff !important;
+  border-collapse: collapse !important;
+}
+
+.high-contrast-mode th,
+.high-contrast-mode td {
+  border: 1px solid #1e3a8a !important;
+  background-color: #ffffff !important;
+  color: #0f2b5c !important;
+}
+
+.high-contrast-mode th {
+  background-color: #f1f5f9 !important;
+  color: #091e42 !important;
+  font-weight: bold !important;
+}
+
+/* Form Inputs, Selects, and Textareas */
 .high-contrast-mode input,
 .high-contrast-mode select,
-.high-contrast-mode button {
+.high-contrast-mode textarea {
   background-color: #ffffff !important;
-  color: #000000 !important;
-  border: 2px solid #000000 !important;
+  color: #091e42 !important;
+  border: 2px solid #1e3a8a !important;
+  box-shadow: none !important;
 }
 
 .high-contrast-mode input:focus,
 .high-contrast-mode select:focus,
-.high-contrast-mode button:focus {
-  outline: 4px solid #000000 !important;
+.high-contrast-mode textarea:focus {
+  outline: 3px solid #1e40af !important;
+  outline-offset: 2px !important;
+  border-color: #1d4ed8 !important;
+}
+
+.high-contrast-mode ::placeholder {
+  color: #3b82f6 !important;
+  opacity: 0.8 !important;
+}
+
+/* Buttons */
+.high-contrast-mode button {
+  background-color: #ffffff !important;
+  color: #0f2b5c !important;
+  border: 2px solid #1e3a8a !important;
+  box-shadow: none !important;
+}
+
+.high-contrast-mode button:hover {
+  background-color: #eff6ff !important;
+  color: #091e42 !important;
+  border-color: #1d4ed8 !important;
+}
+
+.high-contrast-mode button:active {
+  background-color: #dbeafe !important;
+}
+
+.high-contrast-mode button:focus-visible {
+  outline: 3px solid #1e40af !important;
   outline-offset: 2px !important;
 }
 
-.high-contrast-mode svg {
-  color: #000000 !important;
-  stroke: #000000 !important;
+/* Floating High Contrast Toggle Button */
+.high-contrast-mode button.high-contrast-toggle-btn {
+  background-color: #ffffff !important;
+  color: #0f2b5c !important;
+  border: 3px solid #0f2b5c !important;
+  box-shadow: 0 4px 14px rgba(15, 43, 92, 0.25) !important;
 }
 
-/* Placeholder */
-.high-contrast-mode ::placeholder {
-  color: #333333 !important;
-  opacity: 1 !important;
+/* SVGs and Icons */
+.high-contrast-mode svg {
+  color: #0f2b5c !important;
+  stroke: #0f2b5c !important;
+}
+
+/* Ambient glow & decorative blurs removal */
+.high-contrast-mode .blur-\[120px\],
+.high-contrast-mode .blur-\[80px\],
+.high-contrast-mode [class*="blur-"] {
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Modal Backdrops in High Contrast */
+.high-contrast-mode .fixed.inset-0 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: none !important;
+}
+
+.high-contrast-mode .fixed.inset-0 > div {
+  border: 2px solid #1e3a8a !important;
+  box-shadow: 0 20px 25px -5px rgba(15, 43, 92, 0.2) !important;
 }
 

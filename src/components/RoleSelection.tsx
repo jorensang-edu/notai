@@ -22,6 +22,7 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
   const [showTutorAuth, setShowTutorAuth] = useState(false);
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [roleAccessError, setRoleAccessError] = useState<string | null>(null);
   const [validPasswords, setValidPasswords] = useState<string[]>([]);
 
   const currentUser = auth.currentUser;
@@ -41,9 +42,10 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
   const handleTeacherClick = () => {
     const val = validateEmailForRole(userEmail, 'docente');
     if (!val.isValid) {
-      alert(val.errorMessage);
+      setRoleAccessError(val.errorMessage || 'Acceso restringido para este rol con la cuenta actual.');
       return;
     }
+    setRoleAccessError(null);
     setPassword('');
     setAuthError(null);
     setShowTeacherAuth(true);
@@ -75,9 +77,10 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
   const handleTutorClick = () => {
     const val = validateEmailForRole(userEmail, 'tutor');
     if (!val.isValid) {
-      alert(val.errorMessage);
+      setRoleAccessError(val.errorMessage || 'Acceso restringido para este rol con la cuenta actual.');
       return;
     }
+    setRoleAccessError(null);
     setPassword('');
     setAuthError(null);
     setShowTutorAuth(true);
@@ -88,7 +91,7 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
     const cleanCode = password.toUpperCase().trim();
 
     if (!TUTOR_MATRIX[cleanCode]) {
-      setAuthError(`El código "${cleanCode}" no pertenece a la matriz de tutores autorizados.`);
+      setAuthError('El código ingresado no pertenece a la matriz de tutores autorizados.');
       return;
     }
 
@@ -109,9 +112,10 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
   const handleStudentClick = () => {
     const val = validateEmailForRole(userEmail, 'estudiante');
     if (!val.isValid) {
-      alert(val.errorMessage);
+      setRoleAccessError(val.errorMessage || 'Acceso restringido para este rol con la cuenta actual.');
       return;
     }
+    setRoleAccessError(null);
     onSelectRole('estudiante');
   };
 
@@ -188,6 +192,23 @@ export function RoleSelection({ onSelectRole, onOpenEmailConfig }: RoleSelection
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Role Access Error Alert Banner */}
+      {roleAccessError && (
+        <div className="mb-6 p-4 bg-rose-500/15 border border-rose-500/40 rounded-2xl text-rose-300 text-xs flex items-center justify-between max-w-2xl w-full shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="text-rose-400 font-bold text-sm">⚠</span>
+            <span>{roleAccessError}</span>
+          </div>
+          <button 
+            onClick={() => setRoleAccessError(null)} 
+            className="text-rose-400 hover:text-white font-bold p-1 rounded-lg hover:bg-rose-500/20 transition-colors ml-3"
+            title="Cerrar advertencia"
+          >
+            ✕
+          </button>
         </div>
       )}
 

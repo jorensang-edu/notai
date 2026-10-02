@@ -237,7 +237,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                   >
                     <option value="">-- Seleccionar Estudiante ({students.filter(s => s.course === selectedCourseFilter).length}) --</option>
                     {students.filter(s => s.course === selectedCourseFilter).map(s => (
-                      <option key={s.id} value={s.code}>{s.name} ({s.code})</option>
+                      <option key={s.id} value={s.code}>{s.name}</option>
                     ))}
                   </select>
                 )}
@@ -353,7 +353,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
               <div>
                 <p className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Estudiante</p>
                 <h2 className="text-xl md:text-2xl font-bold text-slate-100">{currentStudent.name}</h2>
-                <p className="text-sm text-emerald-400 font-mono mt-0.5">{currentStudent.course} • {currentStudent.code}</p>
+                <p className="text-sm text-emerald-400 font-medium mt-0.5">{currentStudent.course}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 bg-white/5 px-4 py-2.5 rounded-xl border border-white/5 self-stretch sm:self-auto justify-between sm:justify-start">

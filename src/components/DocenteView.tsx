@@ -95,6 +95,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const filteredStudents = useMemo(() => {
     let filtered = students.filter(s => s.course === selectedCourse);
@@ -357,7 +358,8 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
     });
 
     if (!hasData) {
-      alert("No hay actividades registradas para generar el reporte consolidado.");
+      setActionFeedback("No hay actividades registradas para generar el reporte consolidado.");
+      setTimeout(() => setActionFeedback(null), 4000);
       return;
     }
 
@@ -481,12 +483,12 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
               {teacherInfo && (
                 <span className="text-blue-300 text-xs font-bold px-2.5 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                  {teacherInfo.name} ({teacherCode})
+                  {teacherInfo.name}
                 </span>
               )}
               {isReadOnlyUser && (
                 <span className="text-amber-400 text-xs font-semibold px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
-                  Solo Lectura (RWCV9)
+                  Solo Lectura
                 </span>
               )}
             </div>
@@ -559,14 +561,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
             <p className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Contexto Actual</p>
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
               <div>
-                <div className="flex items-center justify-between">
-                  <label className="block text-[11px] sm:text-xs text-slate-500 uppercase">Docente</label>
-                  {teacherCode && (
-                    <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                      {teacherCode}
-                    </span>
-                  )}
-                </div>
+                <label className="block text-[11px] sm:text-xs text-slate-500 uppercase">Docente</label>
                 <input
                   type="text"
                   value={teacherName}
@@ -770,7 +765,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 shrink-0">
               <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-bold text-amber-400 text-sm">Modo de Solo Lectura (Código RWCV9)</h3>
+                <h3 className="font-bold text-amber-400 text-sm">Modo de Solo Lectura</h3>
                 <p className="text-xs text-amber-200/90 mt-1">
                   Su perfil tiene acceso para consultar las calificaciones de todas las asignaturas registradas. No tiene permisos para registrar o modificar calificaciones ni actividades.
                 </p>
@@ -1565,6 +1560,15 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Action Notification Toast */}
+      {actionFeedback && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 bg-amber-500/90 backdrop-blur-md text-white text-xs font-semibold rounded-xl shadow-2xl flex items-center gap-2 border border-amber-400/50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <span>⚠</span>
+          <span>{actionFeedback}</span>
+          <button onClick={() => setActionFeedback(null)} className="ml-3 font-bold hover:text-amber-200">✕</button>
         </div>
       )}
     </div>

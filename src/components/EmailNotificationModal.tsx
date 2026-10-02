@@ -168,13 +168,32 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
           email: testEmail.trim(),
           sendAllTutors: true,
           apiKey: customApiKey.trim() || undefined,
-          simulated: true,
+          simulated: false,
         }),
       });
 
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (customApiKey.trim()) {
+          // Direct fallback from browser if API key provided in UI
+          const pipelineResult = await executeWeeklyReportsPipeline({
+            apiKey: customApiKey.trim(),
+            overrideRecipientEmail: testEmail.trim(),
+            simulated: store.activities.length === 0,
+            activities: store.activities,
+            grades: store.grades,
+            students: store.students,
+          });
+
+          setSendResult({
+            success: pipelineResult.failureCount === 0,
+            message: `Despacho completado: ${pipelineResult.successCount} reportes enviados exitosamente.`,
+            details: pipelineResult,
+          });
+          return;
+        }
+
         throw new Error(data.error || data.message || `Error del servidor (${response.status})`);
       }
 
@@ -281,39 +300,55 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
         {/* Tab Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
 
+          {/* Alert Status Banner (Visible across all tabs) */}
+          {sendResult && (
+            <div
+              className={`p-4 rounded-xl border flex items-start gap-3 ${
+                sendResult.success
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}
+            >
+              {sendResult.success ? (
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400 mt-0.5" />
+              )}
+              <div className="text-xs space-y-1 flex-1">
+                <p className="font-semibold text-sm">{sendResult.message}</p>
+                {sendResult.error && (
+                  <p className="font-mono text-xs opacity-90 break-words bg-rose-950/60 p-2 rounded border border-rose-800/40">
+                    {sendResult.error}
+                  </p>
+                )}
+                {sendResult.details?.resendId && (
+                  <p className="text-[11px] text-slate-400">
+                    ID de Seguimiento Resend: <code className="text-emerald-400">{sendResult.details.resendId}</code>
+                  </p>
+                )}
+                {sendResult.details?.dispatches && Array.isArray(sendResult.details.dispatches) && (
+                  <div className="mt-2 pt-2 border-t border-slate-700/50 space-y-1 max-h-40 overflow-y-auto">
+                    <p className="text-[11px] font-bold text-slate-300">Desglose de Envíos:</p>
+                    {sendResult.details.dispatches.map((d: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-[11px] py-0.5">
+                        <span className="text-slate-300">
+                          {d.tutorName} ({d.alertsCount} alertas)
+                          {d.redirected && <span className="text-amber-400 ml-1.5">(Modo prueba ➔ {d.sentTo})</span>}
+                        </span>
+                        <span className={d.success ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                          {d.success ? '✓ Entregado' : '✗ Falló'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: PILOT TEST */}
           {activeTab === 'pilot' && (
             <div className="space-y-6">
-              
-              {/* Alert Status Banner */}
-              {sendResult && (
-                <div
-                  className={`p-4 rounded-xl border flex items-start gap-3 ${
-                    sendResult.success
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  }`}
-                >
-                  {sendResult.success ? (
-                    <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400 mt-0.5" />
-                  )}
-                  <div className="text-xs space-y-1">
-                    <p className="font-semibold text-sm">{sendResult.message}</p>
-                    {sendResult.error && (
-                      <p className="font-mono text-xs opacity-90 break-words bg-rose-950/60 p-2 rounded border border-rose-800/40">
-                        {sendResult.error}
-                      </p>
-                    )}
-                    {sendResult.details?.resendId && (
-                      <p className="text-[11px] text-slate-400">
-                        ID de Seguimiento Resend: <code className="text-emerald-400">{sendResult.details.resendId}</code>
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Form Card */}
               <div className="bg-slate-800/50 border border-slate-700/70 rounded-xl p-5 space-y-4">
