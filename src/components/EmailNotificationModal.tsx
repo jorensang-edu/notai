@@ -22,6 +22,8 @@ import {
   getSimulatedWeeklyLowGrades, 
   groupLowGradesByTutorAndLevel, 
   generateTutorReportHtml, 
+  generateProtocolAuditReportHtml,
+  PROTOCOL_AUDIT_EMAIL,
   getWeeklyPeriodText,
   executeWeeklyReportsPipeline,
   sendResendEmail,
@@ -67,12 +69,28 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
     return groupLowGradesByTutorAndLevel(simulatedAlerts);
   }, [simulatedAlerts]);
 
-  const currentPreviewTutor = tutorReports[selectedTutorIndex] || tutorReports[0];
+  const currentPreviewTutor = selectedTutorIndex >= 0 ? (tutorReports[selectedTutorIndex] || tutorReports[0]) : null;
 
   const currentPreviewHtml = useMemo(() => {
+    if (selectedTutorIndex === -1) {
+      return generateProtocolAuditReportHtml({
+        weekPeriodText: weekPeriod,
+        tutorReports,
+        dispatches: tutorReports.map(r => ({
+          tutorName: r.tutorName,
+          tutorEmail: r.tutorEmail,
+          sentTo: r.tutorEmail,
+          level: r.level,
+          courses: r.courses,
+          alertsCount: r.alerts.length,
+          success: true,
+          resendId: 're_simulado_protocolo',
+        })),
+      });
+    }
     if (!currentPreviewTutor) return '';
     return generateTutorReportHtml(currentPreviewTutor, weekPeriod);
-  }, [currentPreviewTutor, weekPeriod]);
+  }, [selectedTutorIndex, currentPreviewTutor, tutorReports, weekPeriod]);
 
   const copyToClipboard = (text: string, keyName: string) => {
     navigator.clipboard.writeText(text);
@@ -326,6 +344,22 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
                     ID de Seguimiento Resend: <code className="text-emerald-400">{sendResult.details.resendId}</code>
                   </p>
                 )}
+                {sendResult.details?.protocolConfirmation && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-indigo-950/60 border border-indigo-500/30 flex items-center justify-between text-[11px]">
+                    <div>
+                      <span className="font-bold text-indigo-300">Protocolo de Envío Realizado: </span>
+                      <code className="text-white">{sendResult.details.protocolConfirmation.protocolEmail}</code>
+                      {sendResult.details.protocolConfirmation.redirected && (
+                        <span className="text-amber-400 ml-1.5">
+                          (Modo prueba ➔ {sendResult.details.protocolConfirmation.sentTo})
+                        </span>
+                      )}
+                    </div>
+                    <span className={sendResult.details.protocolConfirmation.success ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                      {sendResult.details.protocolConfirmation.success ? '✓ Constancia Enviada' : '✗ Error'}
+                    </span>
+                  </div>
+                )}
                 {sendResult.details?.dispatches && Array.isArray(sendResult.details.dispatches) && (
                   <div className="mt-2 pt-2 border-t border-slate-700/50 space-y-1 max-h-40 overflow-y-auto">
                     <p className="text-[11px] font-bold text-slate-300">Desglose de Envíos:</p>
@@ -486,12 +520,15 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-800/50 p-3 rounded-xl border border-slate-700/60">
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-300 font-semibold">Previsualizar Reporte de Tutor:</label>
+                  <label className="text-xs text-slate-300 font-semibold">Previsualizar Correo:</label>
                   <select
                     value={selectedTutorIndex}
                     onChange={(e) => setSelectedTutorIndex(Number(e.target.value))}
                     className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value={-1}>
+                      📋 Protocolo de Envío Realizado ({PROTOCOL_AUDIT_EMAIL})
+                    </option>
                     {tutorReports.map((t, idx) => (
                       <option key={t.tutorCode} value={idx}>
                         {t.tutorName} • {t.level} ({t.courses.join(', ')})
@@ -502,7 +539,9 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
 
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <span>Destinatario Real:</span>
-                  <code className="text-blue-300 font-mono">{currentPreviewTutor?.tutorEmail}</code>
+                  <code className="text-blue-300 font-mono">
+                    {selectedTutorIndex === -1 ? PROTOCOL_AUDIT_EMAIL : currentPreviewTutor?.tutorEmail}
+                  </code>
                 </div>
               </div>
 
@@ -524,7 +563,7 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
                 <div>
                   <h3 className="text-sm font-bold text-white">Nómina de Tutores y Cursos Asignados</h3>
                   <p className="text-xs text-slate-400">
-                    Cada tutor recibe única y estrictamente el consolidado de sus cursos a cargo
+                    Cada tutor recibe el consolidado de sus cursos y se emite el correo de protocolo a <code className="text-blue-300">{PROTOCOL_AUDIT_EMAIL}</code>
                   </p>
                 </div>
 
@@ -534,7 +573,37 @@ export function EmailNotificationModal({ isOpen, onClose, store }: EmailNotifica
                   className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Enviar a Todos (Simulación con override a {testEmail})</span>
+                  <span>Enviar a Todos + Protocolo ({PROTOCOL_AUDIT_EMAIL})</span>
+                </button>
+              </div>
+
+              {/* Protocol Audit Recipient Card */}
+              <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-indigo-200 flex items-center gap-2">
+                      <span>Protocolo Institucional de Envío Realizado</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Automático
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-0.5">
+                      Al despachar los reportes a los tutores, el sistema envía automáticamente un e-mail con la bitácora y el contenido íntegro remitido a <code className="text-white font-mono font-bold">{PROTOCOL_AUDIT_EMAIL}</code>.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedTutorIndex(-1);
+                    setActiveTab('preview');
+                  }}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Ver Correo de Protocolo</span>
                 </button>
               </div>
 

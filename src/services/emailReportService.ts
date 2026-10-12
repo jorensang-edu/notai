@@ -560,16 +560,270 @@ export function generateTutorReportHtml(
   `;
 }
 
+export const PROTOCOL_AUDIT_EMAIL = 'jsangurimas@cedfi.edu.ec';
+
+export interface ProtocolDispatchEntry {
+  tutorName: string;
+  tutorEmail: string;
+  sentTo: string;
+  level: string;
+  courses: CourseName[];
+  alertsCount: number;
+  success: boolean;
+  resendId?: string;
+  error?: string;
+  redirected?: boolean;
+  redirectReason?: string;
+}
+
+export interface ProtocolConfirmationResult {
+  protocolEmail: string;
+  sentTo: string;
+  success: boolean;
+  resendId?: string;
+  redirected?: boolean;
+  redirectReason?: string;
+  error?: string;
+}
+
+/**
+ * Generates the official Protocol Confirmation Email HTML sent to jsangurimas@cedfi.edu.ec
+ * containing the execution log and the full content dispatched to all tutors.
+ */
+export function generateProtocolAuditReportHtml(params: {
+  weekPeriodText: string;
+  tutorReports: TutorReportData[];
+  dispatches: ProtocolDispatchEntry[];
+  executedAt?: string;
+  redirectNotice?: string;
+}): string {
+  const {
+    weekPeriodText,
+    tutorReports,
+    dispatches,
+    executedAt = new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' }),
+    redirectNotice,
+  } = params;
+
+  const totalTutors = tutorReports.length;
+  const successCount = dispatches.filter(d => d.success).length;
+  const failureCount = dispatches.filter(d => !d.success).length;
+  const totalAlerts = tutorReports.reduce((acc, r) => acc + r.alerts.length, 0);
+
+  const dispatchSummaryRows = dispatches.map((d, idx) => {
+    const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const statusBadge = d.success
+      ? `<span style="display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 700; color: #166534; background-color: #dcfce7; border-radius: 6px;">✓ ENVIADO</span>`
+      : `<span style="display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 700; color: #991b1b; background-color: #fee2e2; border-radius: 6px;">✗ ERROR</span>`;
+
+    return `
+      <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 10px 12px; font-size: 12px; color: #0f172a; font-weight: 700;">
+          ${d.tutorName}
+          <div style="font-size: 11px; color: #64748b; font-weight: normal;">${d.level} • ${d.courses.join(', ')}</div>
+        </td>
+        <td style="padding: 10px 12px; font-size: 12px; color: #334155; font-family: monospace;">
+          ${d.tutorEmail}
+          ${d.redirected ? `<div style="font-size: 10px; color: #b45309;">Entregado en: ${d.sentTo}</div>` : ''}
+        </td>
+        <td style="padding: 10px 12px; font-size: 12px; color: #0f172a; font-weight: 700; text-align: center;">
+          ${d.alertsCount}
+        </td>
+        <td style="padding: 10px 12px; text-align: center;">
+          ${statusBadge}
+        </td>
+        <td style="padding: 10px 12px; font-size: 11px; color: #64748b; font-family: monospace;">
+          ${d.resendId || d.error || '-'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  const tutorContentSections = tutorReports.map((report) => {
+    const coursesList = report.courses.join(', ');
+    let alertRows = '';
+
+    if (report.alerts.length === 0) {
+      alertRows = `
+        <tr>
+          <td colspan="6" style="padding: 14px; text-align: center; color: #166534; background-color: #f0fdf4; font-size: 12px; font-weight: 500;">
+            Sin calificaciones menores a 7.00/10 registradas en ${coursesList}.
+          </td>
+        </tr>
+      `;
+    } else {
+      alertRows = report.alerts.map((item, idx) => {
+        const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+        const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+
+        return `
+          <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 10px; font-size: 12px; color: #1e293b; font-weight: 600;">
+              ${item.studentName}
+              <div style="font-size: 10px; color: #64748b; font-weight: normal;">Cód: ${item.studentCode} | ${item.course}</div>
+            </td>
+            <td style="padding: 8px 10px; font-size: 12px; color: #334155;">${item.subject}</td>
+            <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
+              ${item.activityName}
+              <div style="font-size: 10px; color: #64748b;">${item.component}</div>
+            </td>
+            <td style="padding: 8px 10px; font-size: 11px; color: #64748b; text-align: center;">${item.date}</td>
+            <td style="padding: 8px 10px; text-align: center;">
+              <span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
+                ${item.grade.toFixed(2)} / 10
+              </span>
+            </td>
+            <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
+              ${item.observation || 'Requiere refuerzo pedagógico'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    return `
+      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px;">
+        <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700;">Tutor(a): ${report.tutorName} (${report.tutorEmail})</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Nivel: ${report.level} • Cursos: ${coursesList}</div>
+          </div>
+          <div style="background-color: ${report.alerts.length > 0 ? '#dc2626' : '#16a34a'}; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
+            ${report.alerts.length} alertas &lt; 7.00
+          </div>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${alertRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protocolo de Envío Realizado - NotAI CEDFI</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+  <div style="max-width: 780px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08); border: 1px solid #cbd5e1;">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #1d4ed8 100%); padding: 30px 28px; color: #ffffff;">
+      <div style="margin-bottom: 10px;">
+        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #fde68a; background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 9999px;">
+          Constancia de Protocolo Institucional • NotAI CEDFI
+        </span>
+      </div>
+      <h1 style="margin: 0 0 8px 0; font-size: 21px; font-weight: 800;">
+        E-mail de Envío Realizado: Reportes Semanales a Tutores
+      </h1>
+      <p style="margin: 0; font-size: 13px; color: #cbd5e1;">
+        Destinatario de Protocolo: <strong style="color: #ffffff;">${PROTOCOL_AUDIT_EMAIL}</strong> • Período: <strong style="color: #ffffff;">${weekPeriodText}</strong>
+      </p>
+      <p style="margin: 4px 0 0 0; font-size: 11px; color: #93c5fd;">
+        Fecha y hora de ejecución: ${executedAt}
+      </p>
+    </div>
+
+    ${redirectNotice ? `
+    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 28px 0 28px;">
+      <div style="font-size: 12px; font-weight: 700; color: #b45309; margin-bottom: 3px;">
+        ⚠️ Aviso de Entrega de Protocolo (Modo Prueba Resend)
+      </div>
+      <div style="font-size: 12px; color: #92400e; line-height: 1.5;">
+        ${redirectNotice}
+      </div>
+    </div>
+    ` : ''}
+
+    <div style="padding: 24px 28px;">
+      <!-- Summary KPIs -->
+      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Tutores Procesados</div>
+          <div style="font-size: 20px; font-weight: 800; color: #0f172a; margin-top: 4px;">${totalTutors}</div>
+        </div>
+        <div style="flex: 1; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #166534; font-weight: 600; text-transform: uppercase;">Envíos Exitosos</div>
+          <div style="font-size: 20px; font-weight: 800; color: #15803d; margin-top: 4px;">${successCount}</div>
+        </div>
+        <div style="flex: 1; background-color: ${failureCount > 0 ? '#fef2f2' : '#f8fafc'}; border: 1px solid ${failureCount > 0 ? '#fecaca' : '#e2e8f0'}; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Envíos Fallidos</div>
+          <div style="font-size: 20px; font-weight: 800; color: ${failureCount > 0 ? '#dc2626' : '#475569'}; margin-top: 4px;">${failureCount}</div>
+        </div>
+        <div style="flex: 1; background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #9a3412; font-weight: 600; text-transform: uppercase;">Total Alertas (&lt; 7.00)</div>
+          <div style="font-size: 20px; font-weight: 800; color: #c2410c; margin-top: 4px;">${totalAlerts}</div>
+        </div>
+      </div>
+
+      <!-- Dispatch Audit Table -->
+      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">
+        1. Bitácora de Envío a Docentes Tutores
+      </div>
+      <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Tutor / Nivel</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Correo Destino</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Alertas</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Estado</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">ID Resend / Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dispatchSummaryRows}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Full Content Dispatched to Each Tutor -->
+      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">
+        2. Contenido Íntegro Remitido a Cada Tutor
+      </div>
+      ${tutorContentSections}
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color: #f1f5f9; border-top: 1px solid #e2e8f0; padding: 18px 28px; text-align: center; font-size: 11px; color: #64748b;">
+      <div style="font-weight: 700; color: #334155;">Unidad Educativa de Formación Integral - CEDFI</div>
+      <div>Respaldo automático de protocolo enviado a ${PROTOCOL_AUDIT_EMAIL} • Sistema Académico NotAI</div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
 /**
  * Executes the full weekly reporting pipeline:
  * 1. Collects low grades (< 7.00) from the dataset or simulation.
  * 2. Groups them by Tutor and Educational Level.
  * 3. Dispatches individual emails via Resend to each tutor (or test recipient).
+ * 4. Sends a mandatory protocol confirmation email with all dispatched content to jsangurimas@cedfi.edu.ec.
  */
 export async function executeWeeklyReportsPipeline(params: {
   apiKey?: string;
   fromEmail?: string;
   overrideRecipientEmail?: string; // If provided, sends all reports (or pilot test) to this email
+  protocolRecipientEmail?: string; // Defaults to jsangurimas@cedfi.edu.ec
   simulated?: boolean;
   activities?: Activity[];
   grades?: Grade[];
@@ -579,6 +833,7 @@ export async function executeWeeklyReportsPipeline(params: {
     apiKey,
     fromEmail,
     overrideRecipientEmail,
+    protocolRecipientEmail = (typeof process !== 'undefined' ? process.env?.PROTOCOL_AUDIT_EMAIL : undefined) || PROTOCOL_AUDIT_EMAIL,
     simulated = false,
     activities = [],
     grades = [],
@@ -606,18 +861,7 @@ export async function executeWeeklyReportsPipeline(params: {
   const isResendOnboardingDomain = Boolean(fromEmail && fromEmail.includes('onboarding@resend.dev'));
 
   // 3. Dispatch emails with throttling and unverified domain fallback
-  const dispatchResults: {
-    tutorName: string;
-    tutorEmail: string;
-    sentTo: string;
-    level: string;
-    alertsCount: number;
-    success: boolean;
-    resendId?: string;
-    error?: string;
-    redirected?: boolean;
-    redirectReason?: string;
-  }[] = [];
+  const dispatchResults: ProtocolDispatchEntry[] = [];
 
   for (let i = 0; i < tutorReports.length; i++) {
     const report = tutorReports[i];
@@ -660,6 +904,7 @@ export async function executeWeeklyReportsPipeline(params: {
         tutorEmail: report.tutorEmail,
         sentTo: targetEmail,
         level: report.level,
+        courses: report.courses,
         alertsCount: report.alerts.length,
         success: true,
         resendId: res.id,
@@ -691,6 +936,7 @@ export async function executeWeeklyReportsPipeline(params: {
             tutorEmail: report.tutorEmail,
             sentTo: defaultFallbackEmail,
             level: report.level,
+            courses: report.courses,
             alertsCount: report.alerts.length,
             success: true,
             resendId: retryRes.id,
@@ -708,12 +954,107 @@ export async function executeWeeklyReportsPipeline(params: {
         tutorEmail: report.tutorEmail,
         sentTo: targetEmail,
         level: report.level,
+        courses: report.courses,
         alertsCount: report.alerts.length,
         success: false,
         error: errMsg,
         redirected,
         redirectReason,
       });
+    }
+  }
+
+  // 4. Protocol Confirmation Email to jsangurimas@cedfi.edu.ec with full dispatched content
+  await new Promise(resolve => setTimeout(resolve, 600));
+
+  let protocolTargetEmail = protocolRecipientEmail.trim();
+  let protocolRedirected = false;
+  let protocolRedirectReason: string | undefined = undefined;
+
+  if (isResendOnboardingDomain && !protocolTargetEmail.toLowerCase().includes('gmail.com')) {
+    protocolTargetEmail = overrideRecipientEmail ? overrideRecipientEmail.trim() : defaultFallbackEmail;
+    protocolRedirected = true;
+    protocolRedirectReason = `Redirigido a ${protocolTargetEmail} porque el remitente actual es onboarding@resend.dev. Al verificar @cedfi.edu.ec en Resend se entregará directamente a ${protocolRecipientEmail}.`;
+  }
+
+  const protocolRedirectNotice = protocolRedirected
+    ? `Este correo de protocolo de envío realizado está dirigido institucionalmente a <strong>${protocolRecipientEmail}</strong>. Fue entregado en <strong>${protocolTargetEmail}</strong> porque el remitente actual (<em>onboarding@resend.dev</em>) se encuentra en modo prueba.`
+    : undefined;
+
+  const protocolHtml = generateProtocolAuditReportHtml({
+    weekPeriodText,
+    tutorReports,
+    dispatches: dispatchResults,
+    redirectNotice: protocolRedirectNotice,
+  });
+
+  const protocolSubject = `[Protocolo Envío Realizado -> ${protocolRecipientEmail}] [CEDFI NotAI] Consolidado de Reportes a Tutores (${weekPeriodText})`;
+
+  let protocolConfirmation: ProtocolConfirmationResult;
+
+  try {
+    const protoRes = await sendResendEmail({
+      apiKey,
+      from: fromEmail,
+      to: protocolTargetEmail,
+      subject: protocolSubject,
+      html: protocolHtml,
+    });
+
+    protocolConfirmation = {
+      protocolEmail: protocolRecipientEmail,
+      sentTo: protocolTargetEmail,
+      success: true,
+      resendId: protoRes.id,
+      redirected: protocolRedirected,
+      redirectReason: protocolRedirectReason,
+    };
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+
+    if (!protocolRedirected && (errMsg.includes('only send testing emails') || errMsg.includes('testing email address'))) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        const fallbackProtoNotice = `Este correo de protocolo de envío realizado corresponde a <strong>${protocolRecipientEmail}</strong>. Fue redirigido automáticamente a <strong>${defaultFallbackEmail}</strong> porque el dominio @cedfi.edu.ec aún no está verificado en Resend.`;
+        const fallbackProtoHtml = generateProtocolAuditReportHtml({
+          weekPeriodText,
+          tutorReports,
+          dispatches: dispatchResults,
+          redirectNotice: fallbackProtoNotice,
+        });
+
+        const retryProtoRes = await sendResendEmail({
+          apiKey,
+          from: fromEmail,
+          to: defaultFallbackEmail,
+          subject: protocolSubject,
+          html: fallbackProtoHtml,
+        });
+
+        protocolConfirmation = {
+          protocolEmail: protocolRecipientEmail,
+          sentTo: defaultFallbackEmail,
+          success: true,
+          resendId: retryProtoRes.id,
+          redirected: true,
+          redirectReason: `Redirigido a ${defaultFallbackEmail} (dominio @cedfi.edu.ec no verificado en Resend).`,
+        };
+      } catch (retryErr: any) {
+        protocolConfirmation = {
+          protocolEmail: protocolRecipientEmail,
+          sentTo: protocolTargetEmail,
+          success: false,
+          error: retryErr?.message || errMsg,
+        };
+      }
+    } else {
+      protocolConfirmation = {
+        protocolEmail: protocolRecipientEmail,
+        sentTo: protocolTargetEmail,
+        success: false,
+        error: errMsg,
+      };
     }
   }
 
@@ -727,5 +1068,6 @@ export async function executeWeeklyReportsPipeline(params: {
     successCount,
     failureCount,
     dispatches: dispatchResults,
+    protocolConfirmation,
   };
 }

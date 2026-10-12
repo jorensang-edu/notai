@@ -58,7 +58,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.statusCode = 200;
     res.end(JSON.stringify({
       success: result.failureCount === 0,
-      message: `Cron semanal ejecutado con éxito: ${result.successCount} tutores notificados.`,
+      message: `Cron semanal ejecutado con éxito: ${result.successCount} tutores notificados y constancia de protocolo enviada a ${result.protocolConfirmation?.protocolEmail || 'jsangurimas@cedfi.edu.ec'}.`,
       data: result,
     }));
   } catch (err: any) {
