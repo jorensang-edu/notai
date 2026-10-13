@@ -17,6 +17,18 @@ export interface LowGradeAlertItem {
   observation: string;
 }
 
+export interface StudentConsolidatedAlerts {
+  studentId: string;
+  studentCode: string;
+  studentName: string;
+  course: CourseName;
+  level: Level;
+  alerts: LowGradeAlertItem[];
+  lowestGrade: number;
+  averageGrade: number;
+  distinctSubjects: string[];
+}
+
 export interface TutorReportData {
   tutorCode: string;
   tutorName: string;
@@ -347,7 +359,155 @@ export function groupLowGradesByTutorAndLevel(items: LowGradeAlertItem[]): Tutor
 }
 
 /**
- * Generates modern, clean, responsive HTML email for a Tutor.
+ * Consolidates low-grade alert items by student for clearer reading per case.
+ */
+export function consolidateAlertsByStudent(items: LowGradeAlertItem[]): StudentConsolidatedAlerts[] {
+  const map = new Map<string, StudentConsolidatedAlerts>();
+
+  items.forEach(item => {
+    const key = `${item.studentCode || item.studentId}_${item.course}`;
+    let existing = map.get(key);
+    if (!existing) {
+      existing = {
+        studentId: item.studentId,
+        studentCode: item.studentCode,
+        studentName: item.studentName,
+        course: item.course,
+        level: item.level,
+        alerts: [],
+        lowestGrade: item.grade,
+        averageGrade: item.grade,
+        distinctSubjects: [],
+      };
+      map.set(key, existing);
+    }
+    existing.alerts.push(item);
+  });
+
+  const list = Array.from(map.values());
+  list.forEach(student => {
+    // Sort student's alerts by grade ascending (most critical first)
+    student.alerts.sort((a, b) => a.grade - b.grade);
+    const sum = student.alerts.reduce((acc, a) => acc + a.grade, 0);
+    student.averageGrade = Math.round((sum / student.alerts.length) * 100) / 100;
+    student.lowestGrade = Math.min(...student.alerts.map(a => a.grade));
+    student.distinctSubjects = Array.from(new Set(student.alerts.map(a => a.subject)));
+  });
+
+  // Sort students: those with multiple alerts first, then by lowest grade
+  list.sort((a, b) => {
+    if (b.alerts.length !== a.alerts.length) {
+      return b.alerts.length - a.alerts.length;
+    }
+    return a.lowestGrade - b.lowestGrade;
+  });
+
+  return list;
+}
+
+/**
+ * Builds HTML blocks for alerts consolidated by student.
+ * Renders an organized, easy-to-read student dossier card with grade chips and details.
+ */
+export function buildStudentConsolidatedCardsHtml(students: StudentConsolidatedAlerts[]): string {
+  if (students.length === 0) {
+    return `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 24px; text-align: center; color: #166534; font-size: 13px; font-weight: 500;">
+        🎉 ¡Excelente noticia! En esta semana no se registraron calificaciones inferiores a 7.00/10 en sus cursos asignados.
+      </div>
+    `;
+  }
+
+  return students.map((student, sIdx) => {
+    const isMultiAlert = student.alerts.length > 1;
+    const isCritical = student.lowestGrade < 5.0;
+    const badgeBg = isCritical ? '#fee2e2' : isMultiAlert ? '#ffedd5' : '#f1f5f9';
+    const badgeColor = isCritical ? '#991b1b' : isMultiAlert ? '#9a3412' : '#334155';
+    const badgeBorder = isCritical ? '#fca5a5' : isMultiAlert ? '#fdba74' : '#cbd5e1';
+    const cardBorder = isCritical ? '#fca5a5' : isMultiAlert ? '#fed7aa' : '#e2e8f0';
+
+    const alertsHtml = student.alerts.map((item, aIdx) => {
+      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+      const rowBg = aIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+
+      return `
+        <tr style="background-color: ${rowBg}; border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 12px; font-size: 12px; font-weight: 700; color: #1e293b; width: 26%;">
+            ${item.subject}
+            <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 1px;">Comp: ${item.component}</div>
+          </td>
+          <td style="padding: 10px 12px; font-size: 12px; color: #334155; width: 30%;">
+            ${item.activityName}
+            <div style="font-size: 10px; color: #64748b; margin-top: 1px;">📅 ${item.date}</div>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; width: 16%;">
+            <span style="display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: 800; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 6px; border: 1px solid ${gradeColor}30;">
+              ${item.grade.toFixed(2)} / 10
+            </span>
+          </td>
+          <td style="padding: 10px 12px; font-size: 11px; color: #475569; width: 28%; line-height: 1.4;">
+            ${item.observation || 'Requiere refuerzo pedagógico'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div style="border: 1px solid ${cardBorder}; border-radius: 12px; overflow: hidden; margin-bottom: 18px; background-color: #ffffff; box-shadow: 0 2px 6px -1px rgba(0,0,0,0.04);">
+        <!-- Student Header Bar -->
+        <div style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 16px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; background-color: #1e3a8a; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 6px;">
+                    ${sIdx + 1}
+                  </span>
+                  <span style="font-size: 14px; font-weight: 800; color: #0f172a; margin-left: 6px;">
+                    ${student.studentName}
+                  </span>
+                </div>
+                <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+                  Cód: <strong style="color: #334155;">${student.studentCode}</strong> &bull; Curso: <strong style="color: #1d4ed8;">${student.course}</strong> &bull; Nivel: ${student.level}
+                </div>
+              </td>
+              <td style="vertical-align: middle; text-align: right;">
+                <div style="display: inline-block; background-color: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 4px 10px; border-radius: 8px; text-align: right;">
+                  <div style="font-size: 12px; font-weight: 800;">
+                    ${student.alerts.length} ${student.alerts.length === 1 ? 'alerta' : 'alertas acumuladas'}
+                  </div>
+                  <div style="font-size: 10px; color: #64748b; margin-top: 1px;">
+                    Mín: <strong style="color: #b91c1c;">${student.lowestGrade.toFixed(2)}</strong> | Prom: ${student.averageGrade.toFixed(2)}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- Student Alerts Table -->
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f1f5f9; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">
+              <th style="padding: 8px 12px;">Asignatura / Componente</th>
+              <th style="padding: 8px 12px;">Actividad Evaluada</th>
+              <th style="padding: 8px 12px; text-align: center;">Calificación</th>
+              <th style="padding: 8px 12px;">Observación Pedagógica</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${alertsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Generates modern, clean, responsive HTML email for a Tutor,
+ * with alerts consolidated by student for clearer reading of each case.
  */
 export function generateTutorReportHtml(
   report: TutorReportData, 
@@ -358,57 +518,13 @@ export function generateTutorReportHtml(
   const lowestGrade = totalAlerts > 0 ? Math.min(...report.alerts.map(a => a.grade)).toFixed(2) : '-';
   const averageGrade = totalAlerts > 0 ? (report.alerts.reduce((acc, a) => acc + a.grade, 0) / totalAlerts).toFixed(2) : '-';
 
-  // Group alerts by Course for clean display
-  const courseGroups: Record<string, LowGradeAlertItem[]> = {};
-  report.courses.forEach(c => {
-    courseGroups[c] = report.alerts.filter(a => a.course === c);
-  });
+  // Consolidate alerts by student
+  const consolidatedStudents = consolidateAlertsByStudent(report.alerts);
+  const totalStudents = consolidatedStudents.length;
+  const multiAlertStudentsCount = consolidatedStudents.filter(s => s.alerts.length > 1).length;
 
   const coursesList = report.courses.join(', ');
-
-  let tableRows = '';
-  if (totalAlerts === 0) {
-    tableRows = `
-      <tr>
-        <td colspan="6" style="padding: 24px; text-align: center; color: #166534; background-color: #f0fdf4; font-weight: 500;">
-          ð ¡Excelente noticia! En esta semana no se registraron calificaciones inferiores a 7.00/10 en sus cursos asignados.
-        </td>
-      </tr>
-    `;
-  } else {
-    tableRows = report.alerts.map((item, idx) => {
-      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
-      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
-
-      return `
-        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 12px 14px; font-size: 13px; color: #1e293b; font-weight: 600;">
-            ${item.studentName}
-            <div style="font-size: 11px; color: #64748b; font-weight: normal; margin-top: 2px;">Cód: ${item.studentCode} | ${item.course}</div>
-          </td>
-          <td style="padding: 12px 14px; font-size: 13px; color: #334155; font-weight: 500;">
-            ${item.subject}
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #475569;">
-            ${item.activityName}
-            <div style="font-size: 11px; color: #64748b;">${item.component}</div>
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #64748b; text-align: center;">
-            ${item.date}
-          </td>
-          <td style="padding: 12px 14px; text-align: center;">
-            <span style="display: inline-block; padding: 4px 10px; font-size: 13px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 6px; border: 1px solid ${gradeColor}30;">
-              ${item.grade.toFixed(2)} / 10
-            </span>
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #475569; max-width: 220px;">
-            ${item.observation || 'Requiere refuerzo pedagógico'}
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
+  const studentCardsHtml = buildStudentConsolidatedCardsHtml(consolidatedStudents);
 
   return `
 <!DOCTYPE html>
@@ -416,7 +532,7 @@ export function generateTutorReportHtml(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NotAI CEDFI - Reporte Semanal de Calificaciones Bajas</title>
+  <title>NotAI CEDFI - Reporte Semanal Consolidado de Calificaciones Bajas</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #0f172a;">
   <div style="max-width: 720px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;">
@@ -425,7 +541,7 @@ export function generateTutorReportHtml(
     <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #312e81 100%); padding: 32px 28px; color: #ffffff;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
         <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #93c5fd; background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 9999px;">
-          NotAI CEDFI â¢ Sistema de Alertas
+          NotAI CEDFI • Consolidado por Estudiante
         </span>
         <span style="font-size: 12px; color: #bfdbfe; font-weight: 500;">
           ${report.level}
@@ -462,8 +578,10 @@ export function generateTutorReportHtml(
           </td>
           <td style="vertical-align: middle; text-align: right;">
             <div style="display: inline-block; background-color: ${totalAlerts > 0 ? '#fee2e2' : '#dcfce7'}; border: 1px solid ${totalAlerts > 0 ? '#fca5a5' : '#86efac'}; padding: 8px 16px; border-radius: 12px; text-align: center;">
-              <div style="font-size: 20px; font-weight: 800; color: ${totalAlerts > 0 ? '#991b1b' : '#166534'};">${totalAlerts}</div>
-              <div style="font-size: 11px; font-weight: 600; color: ${totalAlerts > 0 ? '#b91c1c' : '#15803d'}; text-transform: uppercase;">Alertas &lt; 7.00</div>
+              <div style="font-size: 20px; font-weight: 800; color: ${totalAlerts > 0 ? '#991b1b' : '#166534'};">${totalStudents}</div>
+              <div style="font-size: 11px; font-weight: 600; color: ${totalAlerts > 0 ? '#b91c1c' : '#15803d'}; text-transform: uppercase;">
+                ${totalStudents === 1 ? 'Estudiante en Riesgo' : 'Estudiantes en Riesgo'}
+              </div>
             </div>
           </td>
         </tr>
@@ -476,15 +594,19 @@ export function generateTutorReportHtml(
       <!-- Metrics Overview -->
       <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 24px;">
         <tr>
-          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 33.3%;">
-            <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Total de Casos</div>
+          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 25%;">
+            <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Estudiantes</div>
+            <div style="font-size: 18px; font-weight: 700; color: #1e293b; margin-top: 4px;">${totalStudents}</div>
+          </td>
+          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 25%;">
+            <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Alertas</div>
             <div style="font-size: 18px; font-weight: 700; color: #1e293b; margin-top: 4px;">${totalAlerts}</div>
           </td>
-          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 33.3%;">
+          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 25%;">
             <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Nota Más Baja</div>
             <div style="font-size: 18px; font-weight: 700; color: #dc2626; margin-top: 4px;">${lowestGrade} / 10</div>
           </td>
-          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 33.3%;">
+          <td style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; width: 25%;">
             <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Promedio en Riesgo</div>
             <div style="font-size: 18px; font-weight: 700; color: #d97706; margin-top: 4px;">${averageGrade} / 10</div>
           </td>
@@ -492,32 +614,19 @@ export function generateTutorReportHtml(
       </table>
 
       <!-- Detailed Table Header -->
-      <div style="margin-bottom: 12px;">
-        <h2 style="font-size: 15px; font-weight: 700; color: #0f172a; margin: 0 0 4px 0;">
-          Detalle de Calificaciones que Requieren Intervención
+      <div style="margin-bottom: 14px;">
+        <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+          Casos Consolidados por Estudiante (${totalStudents})
         </h2>
         <p style="font-size: 12px; color: #64748b; margin: 0;">
-          Estudiantes que obtuvieron notas menores a 7.00/10 durante esta última semana lectiva:
+          Cada recuadro agrupa todas las notas inferiores a 7.00/10 obtenidas por el estudiante, facilitando el análisis integral del caso y la toma de decisiones tutoriales:
+          ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
         </p>
       </div>
 
-      <!-- Table Container -->
-      <div style="border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-          <thead>
-            <tr style="background-color: #0f172a; color: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
-              <th style="padding: 12px 14px;">Estudiante / Curso</th>
-              <th style="padding: 12px 14px;">Asignatura</th>
-              <th style="padding: 12px 14px;">Actividad / Comp.</th>
-              <th style="padding: 12px 14px; text-align: center;">Fecha</th>
-              <th style="padding: 12px 14px; text-align: center;">Calificación</th>
-              <th style="padding: 12px 14px;">Observación Pedagógica</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
+      <!-- Student Cards Container -->
+      <div style="margin-bottom: 24px;">
+        ${studentCardsHtml}
       </div>
 
       <!-- Pedagogical Recommendations -->
@@ -526,7 +635,8 @@ export function generateTutorReportHtml(
           Acciones Tutoriales Sugeridas (Reglamento LOEI)
         </div>
         <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #1e3a8a; line-height: 1.6;">
-          <li>Verificar la convocatoria y registro oportuno del <strong>refuerzo pedagógico</strong> por parte del docente de la asignatura.</li>
+          <li>Revisar prioritariamente los estudiantes que registran <strong>múltiples alertas</strong> en más de una asignatura.</li>
+          <li>Verificar la convocatoria y registro oportuno del <strong>refuerzo pedagógico</strong> por parte de los docentes de las materias afectadas.</li>
           <li>Comunicar la novedad a los representantes legales si el estudiante acumula dos o más alertas en distintas materias.</li>
           <li>Realizar seguimiento en el panel de tutoría de NotAI para constatar la mejora de la calificación final tras el proceso de refuerzo.</li>
         </ul>
@@ -535,7 +645,7 @@ export function generateTutorReportHtml(
       <!-- Action Button Link -->
       <div style="text-align: center; margin-bottom: 12px;">
         <a href="https://ais-pre-hau6fuyqmtdajg6kctz75u-590796226929.us-west2.run.app" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 600; padding: 12px 28px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-          Acceder al Panel de Tutoría en NotAI â
+          Acceder al Panel de Tutoría en NotAI ➔
         </a>
       </div>
 
@@ -547,7 +657,7 @@ export function generateTutorReportHtml(
         Unidad Educativa de Formación Integral - CEDFI
       </div>
       <div>
-        Sistema Académico NotAI v2 â¢ Módulo Automatizado de Alertas Semanales
+        Sistema Académico NotAI v2 • Módulo Automatizado de Alertas Semanales
       </div>
       <div style="margin-top: 6px; color: #94a3b8;">
         Este es un reporte institucional generado automáticamente según los registros de calificaciones. Si tiene inquietudes, contacte a coordinación académica.
@@ -641,73 +751,82 @@ export function generateProtocolAuditReportHtml(params: {
 
   const tutorContentSections = tutorReports.map((report) => {
     const coursesList = report.courses.join(', ');
-    let alertRows = '';
+    const consolidatedStudents = consolidateAlertsByStudent(report.alerts);
 
-    if (report.alerts.length === 0) {
-      alertRows = `
-        <tr>
-          <td colspan="6" style="padding: 14px; text-align: center; color: #166534; background-color: #f0fdf4; font-size: 12px; font-weight: 500;">
-            Sin calificaciones menores a 7.00/10 registradas en ${coursesList}.
-          </td>
-        </tr>
+    let contentHtml = '';
+    if (consolidatedStudents.length === 0) {
+      contentHtml = `
+        <div style="padding: 16px; text-align: center; color: #166534; background-color: #f0fdf4; font-size: 12px; font-weight: 500;">
+          Sin calificaciones menores a 7.00/10 registradas en ${coursesList}.
+        </div>
       `;
     } else {
-      alertRows = report.alerts.map((item, idx) => {
-        const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-        const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
-        const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+      contentHtml = consolidatedStudents.map((student, sIdx) => {
+        const isMultiAlert = student.alerts.length > 1;
+        const isCritical = student.lowestGrade < 5.0;
+        const badgeBg = isCritical ? '#fee2e2' : isMultiAlert ? '#ffedd5' : '#f1f5f9';
+        const badgeColor = isCritical ? '#991b1b' : isMultiAlert ? '#9a3412' : '#334155';
+
+        const studentRows = student.alerts.map((item, idx) => {
+          const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+          const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+          const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+
+          return `
+            <tr style="background-color: ${bgColor}; border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #1e293b; width: 24%;">
+                ${item.subject}
+                <div style="font-size: 9px; color: #64748b; font-weight: normal;">${item.component}</div>
+              </td>
+              <td style="padding: 8px 10px; font-size: 11px; color: #334155; width: 30%;">
+                ${item.activityName}
+                <div style="font-size: 9px; color: #64748b;">📅 ${item.date}</div>
+              </td>
+              <td style="padding: 8px 10px; text-align: center; width: 16%;">
+                <span style="display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 800; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
+                  ${item.grade.toFixed(2)} / 10
+                </span>
+              </td>
+              <td style="padding: 8px 10px; font-size: 10px; color: #475569; width: 30%;">
+                ${item.observation || 'Requiere refuerzo pedagógico'}
+              </td>
+            </tr>
+          `;
+        }).join('');
 
         return `
-          <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 8px 10px; font-size: 12px; color: #1e293b; font-weight: 600;">
-              ${item.studentName}
-              <div style="font-size: 10px; color: #64748b; font-weight: normal;">Cód: ${item.studentCode} | ${item.course}</div>
-            </td>
-            <td style="padding: 8px 10px; font-size: 12px; color: #334155;">${item.subject}</td>
-            <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
-              ${item.activityName}
-              <div style="font-size: 10px; color: #64748b;">${item.component}</div>
-            </td>
-            <td style="padding: 8px 10px; font-size: 11px; color: #64748b; text-align: center;">${item.date}</td>
-            <td style="padding: 8px 10px; text-align: center;">
-              <span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
-                ${item.grade.toFixed(2)} / 10
+          <div style="border-bottom: 1px solid #e2e8f0;">
+            <div style="background-color: #f8fafc; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f1f5f9;">
+              <div style="font-size: 12px; font-weight: 700; color: #0f172a;">
+                <span style="color: #1e3a8a; font-weight: 800;">${sIdx + 1}.</span> ${student.studentName}
+                <span style="font-size: 10px; font-weight: normal; color: #64748b; margin-left: 6px;">(Cód: ${student.studentCode} • ${student.course})</span>
+              </div>
+              <span style="display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 700; background-color: ${badgeBg}; color: ${badgeColor}; border-radius: 6px;">
+                ${student.alerts.length} ${student.alerts.length === 1 ? 'alerta' : 'alertas'} • Mín: ${student.lowestGrade.toFixed(2)}
               </span>
-            </td>
-            <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
-              ${item.observation || 'Requiere refuerzo pedagógico'}
-            </td>
-          </tr>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+              <tbody>
+                ${studentRows}
+              </tbody>
+            </table>
+          </div>
         `;
       }).join('');
     }
 
     return `
-      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px;">
+      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px; background-color: #ffffff;">
         <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
           <div>
             <div style="font-size: 13px; font-weight: 700;">Tutor(a): ${report.tutorName} (${report.tutorEmail})</div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Nivel: ${report.level} • Cursos: ${coursesList}</div>
           </div>
           <div style="background-color: ${report.alerts.length > 0 ? '#dc2626' : '#16a34a'}; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
-            ${report.alerts.length} alertas &lt; 7.00
+            ${consolidatedStudents.length} estudiantes • ${report.alerts.length} alertas
           </div>
         </div>
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-          <thead>
-            <tr style="background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${alertRows}
-          </tbody>
-        </table>
+        ${contentHtml}
       </div>
     `;
   }).join('');
@@ -1293,49 +1412,11 @@ export function generateTeacherTutorReportHtml(params: {
   const averageGrade = totalAlerts > 0 ? (alerts.reduce((acc, a) => acc + a.grade, 0) / totalAlerts).toFixed(2) : '-';
   const coursesList = courses.join(', ');
 
-  let tableRows = '';
-  if (totalAlerts === 0) {
-    tableRows = `
-      <tr>
-        <td colspan="6" style="padding: 24px; text-align: center; color: #166534; background-color: #f0fdf4; font-weight: 500;">
-          🎉 Sin calificaciones inferiores a 7.00/10 registradas en este período para los cursos asignados.
-        </td>
-      </tr>
-    `;
-  } else {
-    tableRows = alerts.map((item, idx) => {
-      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
-      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+  const consolidatedStudents = consolidateAlertsByStudent(alerts);
+  const totalStudents = consolidatedStudents.length;
+  const multiAlertStudentsCount = consolidatedStudents.filter(s => s.alerts.length > 1).length;
 
-      return `
-        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 12px 14px; font-size: 13px; color: #1e293b; font-weight: 600;">
-            ${item.studentName}
-            <div style="font-size: 11px; color: #64748b; font-weight: normal; margin-top: 2px;">Cód: ${item.studentCode} | ${item.course}</div>
-          </td>
-          <td style="padding: 12px 14px; font-size: 13px; color: #334155; font-weight: 500;">
-            ${item.subject}
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #475569;">
-            ${item.activityName}
-            <div style="font-size: 11px; color: #64748b;">${item.component}</div>
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #64748b; text-align: center;">
-            ${item.date}
-          </td>
-          <td style="padding: 12px 14px; text-align: center;">
-            <span style="display: inline-block; padding: 4px 10px; font-size: 13px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 6px; border: 1px solid ${gradeColor}30;">
-              ${item.grade.toFixed(2)} / 10
-            </span>
-          </td>
-          <td style="padding: 12px 14px; font-size: 12px; color: #475569; max-width: 220px;">
-            ${item.observation || 'Requiere refuerzo pedagógico'}
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
+  const studentCardsHtml = buildStudentConsolidatedCardsHtml(consolidatedStudents);
 
   const redirectNoticeHtml = redirectNotice ? `
     <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 28px 0 28px;">
@@ -1363,7 +1444,7 @@ export function generateTeacherTutorReportHtml(params: {
     <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #4338ca 100%); padding: 32px 28px; color: #ffffff;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
         <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #93c5fd; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 9999px;">
-          NotAI CEDFI • Notificación Docente a Tutoría
+          NotAI CEDFI • Consolidado por Estudiante
         </span>
         <span style="font-size: 12px; color: #bfdbfe; font-weight: 500;">
           ${level}
@@ -1393,8 +1474,10 @@ export function generateTeacherTutorReportHtml(params: {
           </td>
           <td style="vertical-align: middle; text-align: right;">
             <div style="display: inline-block; background-color: ${totalAlerts > 0 ? '#fee2e2' : '#dcfce7'}; border: 1px solid ${totalAlerts > 0 ? '#fca5a5' : '#86efac'}; padding: 8px 16px; border-radius: 12px; text-align: center;">
-              <div style="font-size: 20px; font-weight: 800; color: ${totalAlerts > 0 ? '#991b1b' : '#166534'};">${totalAlerts}</div>
-              <div style="font-size: 11px; font-weight: 600; color: ${totalAlerts > 0 ? '#b91c1c' : '#15803d'}; text-transform: uppercase;">Alertas &lt; 7.00</div>
+              <div style="font-size: 20px; font-weight: 800; color: ${totalAlerts > 0 ? '#991b1b' : '#166534'};">${totalStudents}</div>
+              <div style="font-size: 11px; font-weight: 600; color: ${totalAlerts > 0 ? '#b91c1c' : '#15803d'}; text-transform: uppercase;">
+                ${totalStudents === 1 ? 'Estudiante en Riesgo' : 'Estudiantes en Riesgo'}
+              </div>
             </div>
           </td>
         </tr>
@@ -1404,6 +1487,10 @@ export function generateTeacherTutorReportHtml(params: {
     <!-- Body -->
     <div style="padding: 24px 28px;">
       <div style="display: flex; gap: 14px; margin-bottom: 24px;">
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Estudiantes</div>
+          <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 4px;">${totalStudents}</div>
+        </div>
         <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
           <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Evaluaciones &lt; 7.00</div>
           <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 4px;">${totalAlerts}</div>
@@ -1418,26 +1505,18 @@ export function generateTeacherTutorReportHtml(params: {
         </div>
       </div>
 
-      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">
-        Detalle de Evaluaciones en Riesgo (&lt; 7.00 / 10)
+      <div style="margin-bottom: 14px;">
+        <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+          Casos Consolidados por Estudiante (${totalStudents})
+        </h2>
+        <p style="font-size: 12px; color: #64748b; margin: 0;">
+          Agrupación individual por estudiante de las evaluaciones inferiores a 7.00/10 para facilitar el análisis del caso:
+          ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
+        </p>
       </div>
 
-      <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-          <thead>
-            <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
-              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
+      <div style="margin-bottom: 24px;">
+        ${studentCardsHtml}
       </div>
 
       <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px 18px; border-radius: 0 10px 10px 0; margin-bottom: 24px;">
@@ -1524,61 +1603,82 @@ export function generateTeacherProtocolAuditHtml(params: {
 
   const tutorContentSections = tutorReports.map((report) => {
     const coursesList = report.courses.join(', ');
-    const alertRows = report.alerts.map((item, idx) => {
-      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
-      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+    const consolidatedStudents = consolidateAlertsByStudent(report.alerts);
 
-      return `
-        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 8px 10px; font-size: 12px; color: #1e293b; font-weight: 600;">
-            ${item.studentName}
-            <div style="font-size: 10px; color: #64748b; font-weight: normal;">Cód: ${item.studentCode} | ${item.course}</div>
-          </td>
-          <td style="padding: 8px 10px; font-size: 12px; color: #334155;">${item.subject}</td>
-          <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
-            ${item.activityName}
-            <div style="font-size: 10px; color: #64748b;">${item.component}</div>
-          </td>
-          <td style="padding: 8px 10px; font-size: 11px; color: #64748b; text-align: center;">${item.date}</td>
-          <td style="padding: 8px 10px; text-align: center;">
-            <span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
-              ${item.grade.toFixed(2)} / 10
-            </span>
-          </td>
-          <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
-            ${item.observation || 'Requiere refuerzo pedagógico'}
-          </td>
-        </tr>
+    let contentHtml = '';
+    if (consolidatedStudents.length === 0) {
+      contentHtml = `
+        <div style="padding: 16px; text-align: center; color: #166534; background-color: #f0fdf4; font-size: 12px; font-weight: 500;">
+          Sin calificaciones menores a 7.00/10 registradas en ${coursesList}.
+        </div>
       `;
-    }).join('');
+    } else {
+      contentHtml = consolidatedStudents.map((student, sIdx) => {
+        const isMultiAlert = student.alerts.length > 1;
+        const isCritical = student.lowestGrade < 5.0;
+        const badgeBg = isCritical ? '#fee2e2' : isMultiAlert ? '#ffedd5' : '#f1f5f9';
+        const badgeColor = isCritical ? '#991b1b' : isMultiAlert ? '#9a3412' : '#334155';
+
+        const studentRows = student.alerts.map((item, idx) => {
+          const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+          const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+          const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+
+          return `
+            <tr style="background-color: ${bgColor}; border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #1e293b; width: 24%;">
+                ${item.subject}
+                <div style="font-size: 9px; color: #64748b; font-weight: normal;">${item.component}</div>
+              </td>
+              <td style="padding: 8px 10px; font-size: 11px; color: #334155; width: 30%;">
+                ${item.activityName}
+                <div style="font-size: 9px; color: #64748b;">📅 ${item.date}</div>
+              </td>
+              <td style="padding: 8px 10px; text-align: center; width: 16%;">
+                <span style="display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 800; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
+                  ${item.grade.toFixed(2)} / 10
+                </span>
+              </td>
+              <td style="padding: 8px 10px; font-size: 10px; color: #475569; width: 30%;">
+                ${item.observation || 'Requiere refuerzo pedagógico'}
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        return `
+          <div style="border-bottom: 1px solid #e2e8f0;">
+            <div style="background-color: #f8fafc; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f1f5f9;">
+              <div style="font-size: 12px; font-weight: 700; color: #0f172a;">
+                <span style="color: #1e3a8a; font-weight: 800;">${sIdx + 1}.</span> ${student.studentName}
+                <span style="font-size: 10px; font-weight: normal; color: #64748b; margin-left: 6px;">(Cód: ${student.studentCode} • ${student.course})</span>
+              </div>
+              <span style="display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 700; background-color: ${badgeBg}; color: ${badgeColor}; border-radius: 6px;">
+                ${student.alerts.length} ${student.alerts.length === 1 ? 'alerta' : 'alertas'} • Mín: ${student.lowestGrade.toFixed(2)}
+              </span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+              <tbody>
+                ${studentRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }).join('');
+    }
 
     return `
-      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px;">
+      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px; background-color: #ffffff;">
         <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
           <div>
             <div style="font-size: 13px; font-weight: 700;">Tutor(a): ${report.tutorName} (${report.tutorEmail})</div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Nivel: ${report.level} • Cursos: ${coursesList}</div>
           </div>
-          <div style="background-color: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
-            ${report.alerts.length} alertas &lt; 7.00
+          <div style="background-color: ${report.alerts.length > 0 ? '#dc2626' : '#16a34a'}; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
+            ${consolidatedStudents.length} estudiantes • ${report.alerts.length} alertas
           </div>
         </div>
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-          <thead>
-            <tr style="background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
-              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${alertRows}
-          </tbody>
-        </table>
+        ${contentHtml}
       </div>
     `;
   }).join('');
