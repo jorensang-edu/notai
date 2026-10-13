@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { 
   executeWeeklyReportsPipeline, 
+  executeTeacherNotificationPipeline,
   sendResendEmail, 
   generateTutorReportHtml, 
   generateProtocolAuditReportHtml,
@@ -65,6 +66,55 @@ export default async function handler(req: IncomingMessage & { body?: any; query
         success: false,
         error: 'Falta la variable de entorno RESEND_API_KEY en Vercel o en el cuerpo de la petición.',
         instructions: 'Configura RESEND_API_KEY en Vercel > Settings > Environment Variables con tu clave de https://resend.com.',
+      }));
+      return;
+    }
+
+    // Flujo específico: Envío de notificaciones desde el perfil de un Docente a los Tutores
+    if (body.action === 'teacher-notification' || body.isTeacherSend) {
+      let activities: any[] = body.activities || [];
+      let grades: any[] = body.grades || [];
+
+      if ((!activities || activities.length === 0) && body.fetchFromFirestore !== false) {
+        try {
+          const { db, auth } = await import('../src/firebase');
+          const { signInAnonymously } = await import('firebase/auth');
+          const { collection, getDocs } = await import('firebase/firestore');
+
+          if (!auth.currentUser) {
+            await signInAnonymously(auth);
+          }
+          const actsSnap = await getDocs(collection(db, 'activities'));
+          actsSnap.forEach(d => activities.push(d.data()));
+          const gradesSnap = await getDocs(collection(db, 'grades'));
+          gradesSnap.forEach(d => grades.push(d.data()));
+        } catch {
+          // Ignorar fallo de firestore y usar las pasadas en body o simuladas
+        }
+      }
+
+      const teacherResult = await executeTeacherNotificationPipeline({
+        teacherName: body.teacherName || 'Docente de Asignatura',
+        teacherEmail: body.teacherEmail,
+        rangeType: body.rangeType || '1-week',
+        customRange: body.customRange,
+        trimestreName: body.trimestreName || '1º Trimestre',
+        selectedSubject: body.selectedSubject || 'ALL',
+        selectedCourses: body.selectedCourses,
+        activities,
+        grades,
+        apiKey,
+        fromEmail,
+        overrideRecipientEmail: body.overrideRecipientEmail || (body.sendToRealTutors ? undefined : testEmail),
+        protocolRecipientEmail: body.protocolRecipientEmail,
+        simulatedFallback: body.simulatedFallback || (activities.length === 0),
+      });
+
+      res.statusCode = 200;
+      res.end(JSON.stringify({
+        success: teacherResult.failureCount === 0,
+        message: `Notificaciones de docente despachadas: ${teacherResult.successCount} tutores notificados y constancia de protocolo enviada a ${teacherResult.protocolConfirmation?.protocolEmail || PROTOCOL_AUDIT_EMAIL}.`,
+        data: teacherResult,
       }));
       return;
     }

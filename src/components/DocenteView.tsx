@@ -15,11 +15,12 @@ import {
   canStudentRegisterImprovement,
   getStudentGlobalImprovementStats
 } from '../utils';
-import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus, PanelLeftClose, PanelLeftOpen, Mail } from 'lucide-react';
 import { auth } from '../firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
 import { ErrorBoundary } from './ErrorBoundary';
+import { TeacherTutorNotificationModal } from './TeacherTutorNotificationModal';
 
 interface DocenteViewProps {
   onLogout: () => void;
@@ -96,6 +97,28 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+
+  const { permittedCourses, permittedSubjects } = useMemo(() => {
+    const allCourses: CourseName[] = [
+      '8 EGB A', '8 EGB B', '9 EGB A', '9 EGB B', '10 EGB A', '10 EGB B',
+      '1 BACH. A', '1 BACH. B', '2 BACH. A', '2 BACH. B', '3 BACH. A', '3 BACH. B'
+    ];
+    const allSubjects: SubjectName[] = [
+      'Matemáticas', 'Lengua y Literatura', 'Ciencias Naturales', 'Biología',
+      'Química', 'Física', 'Diplomado',
+      'Indagación', 'Filosofía', 'Patrimonio', 'Ciudadanía', 'Ciencias Sociales', 'Investigación'
+    ];
+    if (teacherCode) {
+      const tInfo = TEACHER_MATRIX[teacherCode];
+      if (tInfo && Array.isArray(tInfo.permissions)) {
+        const pSubs = Array.from(new Set(tInfo.permissions.map(p => p.subject as SubjectName)));
+        const pCourses = Array.from(new Set(tInfo.permissions.flatMap(p => p.courses as CourseName[])));
+        return { permittedCourses: pCourses, permittedSubjects: pSubs };
+      }
+    }
+    return { permittedCourses: allCourses, permittedSubjects: allSubjects };
+  }, [teacherCode]);
 
   const filteredStudents = useMemo(() => {
     let filtered = students.filter(s => s.course === selectedCourse);
@@ -497,12 +520,21 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 sm:gap-6">
           <div className="text-right hidden sm:block">
             <p className="text-sm font-semibold">{courseParams.institution}</p>
             <p className="text-xs text-slate-400">Periodo Lectivo: {courseParams.period}</p>
           </div>
           <div className="h-8 w-px bg-white/10 hidden sm:block"></div>
+          <button
+            onClick={() => setIsNotificationModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md shadow-blue-600/25 hover:shadow-blue-600/40 border border-blue-400/30"
+            title="Configurar semanas y enviar reporte a tutores con constancia a jsangurimas@cedfi.edu.ec"
+          >
+            <Mail className="w-4 h-4 text-blue-200" />
+            <span className="hidden sm:inline">Notificar a Tutores</span>
+            <span className="sm:hidden">Notificar</span>
+          </button>
           <button
             onClick={onLogout}
             className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-lg transition-colors"
@@ -520,10 +552,18 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
           className="flex items-center gap-2 text-xs font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 px-3 py-1.5 rounded-lg transition-colors"
         >
           {isSidebarVisible ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-          <span>{isSidebarVisible ? 'Ocultar Panel' : 'Configuración y Filtros'}</span>
+          <span>{isSidebarVisible ? 'Ocultar' : 'Filtros'}</span>
         </button>
-        <span className="text-xs font-medium text-slate-400 truncate max-w-[170px]">
-          {selectedCourse} • {currentSubject}
+        <button
+          onClick={() => setIsNotificationModalOpen(true)}
+          className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+          title="Notificar a Tutores"
+        >
+          <Mail className="w-3.5 h-3.5" />
+          <span>Notificar Tutores</span>
+        </button>
+        <span className="text-xs font-medium text-slate-400 truncate max-w-[120px]">
+          {selectedCourse}
         </span>
       </div>
 
@@ -729,6 +769,14 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
               <BarChart2 className="w-4 h-4" />
               Estadísticas
             </button>
+            <button
+              onClick={() => setIsNotificationModalOpen(true)}
+              className="w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm transition-all border font-semibold bg-gradient-to-r from-blue-600/20 to-indigo-600/20 hover:from-blue-600/30 hover:to-indigo-600/30 text-blue-300 border-blue-500/40 hover:border-blue-400 shadow-lg shadow-blue-500/10"
+              title="Configurar semanas y enviar correo a tutores con constancia a jsangurimas@cedfi.edu.ec"
+            >
+              <Mail className="w-4 h-4 text-blue-400" />
+              <span>Notificar a Tutores</span>
+            </button>
           </div>
         </aside>
 
@@ -759,6 +807,17 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
               <div className="text-xs text-slate-400 hidden sm:block">
                 <span className="font-semibold text-slate-200">{selectedCourse}</span> • <span>{currentSubject}</span> • <span className="text-blue-400">{courseParams.trimestre}</span>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsNotificationModalOpen(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold transition-all shadow-sm"
+                title="Configurar compilado de semanas y notificar a tutores"
+              >
+                <Mail className="w-3.5 h-3.5 text-blue-400" />
+                <span>Notificar a Tutores</span>
+              </button>
             </div>
           </div>
           {isReadOnlyUser ? (
@@ -1571,6 +1630,19 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
           <button onClick={() => setActionFeedback(null)} className="ml-3 font-bold hover:text-amber-200">✕</button>
         </div>
       )}
+
+      {/* Teacher to Tutor Notification Modal */}
+      <TeacherTutorNotificationModal
+        isOpen={isNotificationModalOpen}
+        onClose={() => setIsNotificationModalOpen(false)}
+        store={store}
+        teacherName={teacherName}
+        teacherCode={teacherCode}
+        currentSubject={currentSubject}
+        currentCourse={selectedCourse}
+        permittedCourses={permittedCourses}
+        permittedSubjects={permittedSubjects}
+      />
     </div>
   );
 }

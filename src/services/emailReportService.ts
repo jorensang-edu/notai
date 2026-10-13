@@ -1071,3 +1071,891 @@ export async function executeWeeklyReportsPipeline(params: {
     protocolConfirmation,
   };
 }
+
+export type NotificationRangeType = '1-week' | '2-weeks' | '3-weeks' | '4-weeks' | 'trimestre' | 'custom';
+
+export interface TeacherNotificationParams {
+  teacherName: string;
+  teacherEmail?: string;
+  rangeType: NotificationRangeType;
+  customRange?: { start?: string; end?: string };
+  trimestreName?: string;
+  selectedSubject?: string; // Specific subject or 'ALL'
+  selectedCourses?: CourseName[]; // Specific courses or undefined for all
+  activities: Activity[];
+  grades: Grade[];
+  students?: Student[];
+  apiKey?: string;
+  fromEmail?: string;
+  overrideRecipientEmail?: string;
+  protocolRecipientEmail?: string;
+  simulatedFallback?: boolean;
+}
+
+export function isDateWithinConfiguredRange(
+  dateStrOrTs?: string | number | null,
+  rangeType: NotificationRangeType = '1-week',
+  customRange?: { start?: string; end?: string }
+): boolean {
+  if (!dateStrOrTs) return false;
+  if (rangeType === 'trimestre') return true;
+
+  let targetTime: number;
+  if (typeof dateStrOrTs === 'number') {
+    targetTime = dateStrOrTs;
+  } else {
+    const parts = dateStrOrTs.trim().split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+        targetTime = new Date(year, month, day).getTime();
+      } else {
+        return false;
+      }
+    } else {
+      const parsed = Date.parse(dateStrOrTs);
+      if (!isNaN(parsed)) {
+        targetTime = parsed;
+      } else {
+        return false;
+      }
+    }
+  }
+
+  if (rangeType === 'custom' && customRange?.start && customRange?.end) {
+    const startTime = new Date(customRange.start).getTime();
+    const endTime = new Date(customRange.end).getTime() + 86400000;
+    return targetTime >= startTime && targetTime <= endTime;
+  }
+
+  const daysMap: Record<string, number> = {
+    '1-week': 7,
+    '2-weeks': 14,
+    '3-weeks': 21,
+    '4-weeks': 28,
+  };
+  const days = daysMap[rangeType] || 7;
+  const now = Date.now();
+  const diffMs = now - targetTime;
+  return diffMs >= -86400000 && diffMs <= days * 24 * 60 * 60 * 1000;
+}
+
+export function getConfiguredPeriodText(
+  rangeType: NotificationRangeType = '1-week',
+  customRange?: { start?: string; end?: string },
+  trimestreName = '1º Trimestre'
+): string {
+  if (rangeType === 'trimestre') {
+    return `Todo el ${trimestreName}`;
+  }
+  if (rangeType === 'custom' && customRange?.start && customRange?.end) {
+    const formatCustomDate = (isoStr: string) => {
+      const parts = isoStr.split('-');
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return isoStr;
+    };
+    return `Período Personalizado (${formatCustomDate(customRange.start)} al ${formatCustomDate(customRange.end)})`;
+  }
+  const configMap: Record<string, { days: number; label: string }> = {
+    '1-week': { days: 7, label: 'Compilado de 1 Semana' },
+    '2-weeks': { days: 14, label: 'Compilado de 2 Semanas' },
+    '3-weeks': { days: 21, label: 'Compilado de 3 Semanas' },
+    '4-weeks': { days: 28, label: 'Compilado de 4 Semanas' },
+  };
+  const conf = configMap[rangeType] || { days: 7, label: 'Compilado de 1 Semana' };
+  const end = new Date();
+  const start = new Date(end.getTime() - conf.days * 24 * 60 * 60 * 1000);
+  const formatDate = (d: Date) => {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+  return `${conf.label} (${formatDate(start)} al ${formatDate(end)})`;
+}
+
+export function extractTeacherLowGrades(params: {
+  activities: Activity[];
+  grades: Grade[];
+  students?: Student[];
+  selectedSubject?: string;
+  selectedCourses?: CourseName[];
+  rangeType?: NotificationRangeType;
+  customRange?: { start?: string; end?: string };
+  fallbackToSimulatedIfEmpty?: boolean;
+}): LowGradeAlertItem[] {
+  const {
+    activities,
+    grades,
+    students = STUDENTS_DATA as Student[],
+    selectedSubject,
+    selectedCourses,
+    rangeType = '1-week',
+    customRange,
+    fallbackToSimulatedIfEmpty = false,
+  } = params;
+
+  const studentMap = new Map<string, Student>();
+  students.forEach(s => {
+    studentMap.set(s.code, s);
+    studentMap.set(s.id, s);
+  });
+
+  const results: LowGradeAlertItem[] = [];
+
+  activities.forEach(activity => {
+    if (selectedSubject && selectedSubject !== 'ALL' && activity.subject !== selectedSubject) {
+      return;
+    }
+    if (selectedCourses && selectedCourses.length > 0 && !selectedCourses.includes(activity.course)) {
+      return;
+    }
+    const inRange = isDateWithinConfiguredRange(activity.createdAt || activity.date, rangeType, customRange);
+    if (!inRange) {
+      return;
+    }
+
+    const activityGrades = grades.filter(g => g.activityId === activity.id);
+    activityGrades.forEach(g => {
+      const student = studentMap.get(g.studentId);
+      if (!student) return;
+
+      const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(activity, g);
+      const effectiveGrade = finalGrade !== null ? finalGrade : origEq10;
+
+      if (effectiveGrade !== null && effectiveGrade < 7.00) {
+        let obs = g.observation || '';
+        if (!obs) {
+          if (efDetails?.statusMessage) {
+            obs = efDetails.statusMessage;
+          } else if (effectiveGrade < 5.00) {
+            obs = 'Riesgo crítico: Calificación significativamente baja';
+          } else {
+            obs = 'Alerta académica: Requiere refuerzo pedagógico';
+          }
+        }
+
+        results.push({
+          studentId: student.id || student.code,
+          studentCode: student.code,
+          studentName: student.name,
+          course: student.course,
+          level: student.level,
+          subject: activity.subject,
+          activityName: activity.name,
+          component: activity.component,
+          date: activity.date || 'Semana Configurada',
+          grade: Math.trunc(effectiveGrade * 100) / 100,
+          observation: obs,
+        });
+      }
+    });
+  });
+
+  if (results.length === 0 && fallbackToSimulatedIfEmpty) {
+    const sim = getSimulatedWeeklyLowGrades();
+    return sim.filter(item => {
+      if (selectedSubject && selectedSubject !== 'ALL' && item.subject !== selectedSubject) return false;
+      if (selectedCourses && selectedCourses.length > 0 && !selectedCourses.includes(item.course)) return false;
+      return true;
+    });
+  }
+
+  return results;
+}
+
+export function generateTeacherTutorReportHtml(params: {
+  teacherName: string;
+  tutorName: string;
+  tutorEmail: string;
+  level: string;
+  courses: CourseName[];
+  alerts: LowGradeAlertItem[];
+  periodText: string;
+  subjectTitle?: string;
+  redirectNotice?: string;
+}): string {
+  const {
+    teacherName,
+    tutorName,
+    level,
+    courses,
+    alerts,
+    periodText,
+    subjectTitle,
+    redirectNotice,
+  } = params;
+
+  const totalAlerts = alerts.length;
+  const lowestGrade = totalAlerts > 0 ? Math.min(...alerts.map(a => a.grade)).toFixed(2) : '-';
+  const averageGrade = totalAlerts > 0 ? (alerts.reduce((acc, a) => acc + a.grade, 0) / totalAlerts).toFixed(2) : '-';
+  const coursesList = courses.join(', ');
+
+  let tableRows = '';
+  if (totalAlerts === 0) {
+    tableRows = `
+      <tr>
+        <td colspan="6" style="padding: 24px; text-align: center; color: #166534; background-color: #f0fdf4; font-weight: 500;">
+          🎉 Sin calificaciones inferiores a 7.00/10 registradas en este período para los cursos asignados.
+        </td>
+      </tr>
+    `;
+  } else {
+    tableRows = alerts.map((item, idx) => {
+      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+
+      return `
+        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 14px; font-size: 13px; color: #1e293b; font-weight: 600;">
+            ${item.studentName}
+            <div style="font-size: 11px; color: #64748b; font-weight: normal; margin-top: 2px;">Cód: ${item.studentCode} | ${item.course}</div>
+          </td>
+          <td style="padding: 12px 14px; font-size: 13px; color: #334155; font-weight: 500;">
+            ${item.subject}
+          </td>
+          <td style="padding: 12px 14px; font-size: 12px; color: #475569;">
+            ${item.activityName}
+            <div style="font-size: 11px; color: #64748b;">${item.component}</div>
+          </td>
+          <td style="padding: 12px 14px; font-size: 12px; color: #64748b; text-align: center;">
+            ${item.date}
+          </td>
+          <td style="padding: 12px 14px; text-align: center;">
+            <span style="display: inline-block; padding: 4px 10px; font-size: 13px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 6px; border: 1px solid ${gradeColor}30;">
+              ${item.grade.toFixed(2)} / 10
+            </span>
+          </td>
+          <td style="padding: 12px 14px; font-size: 12px; color: #475569; max-width: 220px;">
+            ${item.observation || 'Requiere refuerzo pedagógico'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  const redirectNoticeHtml = redirectNotice ? `
+    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 28px 0 28px;">
+      <div style="font-size: 12px; font-weight: 700; color: #b45309; margin-bottom: 3px;">
+        ⚠️ Modo Prueba Resend (Redirección Automática)
+      </div>
+      <div style="font-size: 12px; color: #92400e; line-height: 1.5;">
+        ${redirectNotice}
+      </div>
+    </div>
+  ` : '';
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notificación Docente a Tutoría - NotAI CEDFI</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+  <div style="max-width: 720px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08); border: 1px solid #e2e8f0;">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #4338ca 100%); padding: 32px 28px; color: #ffffff;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #93c5fd; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 9999px;">
+          NotAI CEDFI • Notificación Docente a Tutoría
+        </span>
+        <span style="font-size: 12px; color: #bfdbfe; font-weight: 500;">
+          ${level}
+        </span>
+      </div>
+      <h1 style="margin: 0 0 8px 0; font-size: 21px; font-weight: 800; line-height: 1.3;">
+        Reporte de Calificaciones Bajas (&lt; 7.00 / 10)
+      </h1>
+      <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
+        Docente Remitente: <strong style="color: #ffffff;">Prof. ${teacherName}</strong> ${subjectTitle ? `(${subjectTitle})` : ''}
+      </p>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #93c5fd;">
+        Período Compilado: <strong style="color: #ffffff;">${periodText}</strong>
+      </p>
+    </div>
+
+    ${redirectNoticeHtml}
+
+    <!-- Context Bar -->
+    <div style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 18px 28px;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="vertical-align: middle;">
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Docente Tutor Destinatario</div>
+            <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 2px;">${tutorName}</div>
+            <div style="font-size: 12px; color: #2563eb; font-weight: 500; margin-top: 2px;">Cursos correspondientes: ${coursesList}</div>
+          </td>
+          <td style="vertical-align: middle; text-align: right;">
+            <div style="display: inline-block; background-color: ${totalAlerts > 0 ? '#fee2e2' : '#dcfce7'}; border: 1px solid ${totalAlerts > 0 ? '#fca5a5' : '#86efac'}; padding: 8px 16px; border-radius: 12px; text-align: center;">
+              <div style="font-size: 20px; font-weight: 800; color: ${totalAlerts > 0 ? '#991b1b' : '#166534'};">${totalAlerts}</div>
+              <div style="font-size: 11px; font-weight: 600; color: ${totalAlerts > 0 ? '#b91c1c' : '#15803d'}; text-transform: uppercase;">Alertas &lt; 7.00</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Body -->
+    <div style="padding: 24px 28px;">
+      <div style="display: flex; gap: 14px; margin-bottom: 24px;">
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Evaluaciones &lt; 7.00</div>
+          <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 4px;">${totalAlerts}</div>
+        </div>
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Nota Más Baja</div>
+          <div style="font-size: 18px; font-weight: 800; color: #dc2626; margin-top: 4px;">${lowestGrade}</div>
+        </div>
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Promedio en Riesgo</div>
+          <div style="font-size: 18px; font-weight: 800; color: #ea580c; margin-top: 4px;">${averageGrade}</div>
+        </div>
+      </div>
+
+      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">
+        Detalle de Evaluaciones en Riesgo (&lt; 7.00 / 10)
+      </div>
+
+      <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
+              <th style="padding: 12px 14px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px 18px; border-radius: 0 10px 10px 0; margin-bottom: 24px;">
+        <div style="font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 6px;">
+          Coordinación Tutorial Sugerida
+        </div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #1e3a8a; line-height: 1.6;">
+          <li>El docente <strong>Prof. ${teacherName}</strong> remite este informe para coordinación oportuna del <strong>refuerzo pedagógico</strong>.</li>
+          <li>Revisar en conjunto si el estudiante presenta dificultades en otras asignaturas para convocar a su representante legal si fuere necesario.</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin-bottom: 12px;">
+        <a href="https://ais-pre-hau6fuyqmtdajg6kctz75u-590796226929.us-west2.run.app" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 600; padding: 12px 28px; border-radius: 10px;">
+          Ingresar al Panel de Tutoría NotAI ➔
+        </a>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color: #f1f5f9; border-top: 1px solid #e2e8f0; padding: 20px 28px; text-align: center; font-size: 11px; color: #64748b;">
+      <div style="font-weight: 600; color: #334155;">Unidad Educativa de Formación Integral - CEDFI</div>
+      <div>NotAI Sistema Académico • Comunicación Directa Docente - Tutoría</div>
+    </div>
+
+  </div>
+</body>
+</html>
+  `;
+}
+
+export function generateTeacherProtocolAuditHtml(params: {
+  teacherName: string;
+  periodText: string;
+  tutorReports: TutorReportData[];
+  dispatches: ProtocolDispatchEntry[];
+  protocolEmail?: string;
+  executedAt?: string;
+  redirectNotice?: string;
+}): string {
+  const {
+    teacherName,
+    periodText,
+    tutorReports,
+    dispatches,
+    protocolEmail = PROTOCOL_AUDIT_EMAIL,
+    executedAt = new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' }),
+    redirectNotice,
+  } = params;
+
+  const totalTutors = tutorReports.length;
+  const successCount = dispatches.filter(d => d.success).length;
+  const failureCount = dispatches.filter(d => !d.success).length;
+  const totalAlerts = tutorReports.reduce((acc, r) => acc + r.alerts.length, 0);
+
+  const dispatchSummaryRows = dispatches.map((d, idx) => {
+    const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const statusBadge = d.success
+      ? `<span style="display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 700; color: #166534; background-color: #dcfce7; border-radius: 6px;">✓ ENVIADO</span>`
+      : `<span style="display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 700; color: #991b1b; background-color: #fee2e2; border-radius: 6px;">✗ ERROR</span>`;
+
+    return `
+      <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 10px 12px; font-size: 12px; color: #0f172a; font-weight: 700;">
+          ${d.tutorName}
+          <div style="font-size: 11px; color: #64748b; font-weight: normal;">${d.level} • ${d.courses.join(', ')}</div>
+        </td>
+        <td style="padding: 10px 12px; font-size: 12px; color: #334155; font-family: monospace;">
+          ${d.tutorEmail}
+          ${d.redirected ? `<div style="font-size: 10px; color: #b45309;">Entregado en: ${d.sentTo}</div>` : ''}
+        </td>
+        <td style="padding: 10px 12px; font-size: 12px; color: #0f172a; font-weight: 700; text-align: center;">
+          ${d.alertsCount}
+        </td>
+        <td style="padding: 10px 12px; text-align: center;">
+          ${statusBadge}
+        </td>
+        <td style="padding: 10px 12px; font-size: 11px; color: #64748b; font-family: monospace;">
+          ${d.resendId || d.error || '-'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  const tutorContentSections = tutorReports.map((report) => {
+    const coursesList = report.courses.join(', ');
+    const alertRows = report.alerts.map((item, idx) => {
+      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+
+      return `
+        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 8px 10px; font-size: 12px; color: #1e293b; font-weight: 600;">
+            ${item.studentName}
+            <div style="font-size: 10px; color: #64748b; font-weight: normal;">Cód: ${item.studentCode} | ${item.course}</div>
+          </td>
+          <td style="padding: 8px 10px; font-size: 12px; color: #334155;">${item.subject}</td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
+            ${item.activityName}
+            <div style="font-size: 10px; color: #64748b;">${item.component}</div>
+          </td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #64748b; text-align: center;">${item.date}</td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 700; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 5px;">
+              ${item.grade.toFixed(2)} / 10
+            </span>
+          </td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #475569;">
+            ${item.observation || 'Requiere refuerzo pedagógico'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px;">
+        <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700;">Tutor(a): ${report.tutorName} (${report.tutorEmail})</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Nivel: ${report.level} • Cursos: ${coursesList}</div>
+          </div>
+          <div style="background-color: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
+            ${report.alerts.length} alertas &lt; 7.00
+          </div>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Estudiante</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Asignatura</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Actividad</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Fecha</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Nota</th>
+              <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase;">Observación</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${alertRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Constancia de Protocolo - Notificación Docente a Tutores</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+  <div style="max-width: 780px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08); border: 1px solid #cbd5e1;">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #1d4ed8 100%); padding: 30px 28px; color: #ffffff;">
+      <div style="margin-bottom: 10px;">
+        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #fde68a; background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 9999px;">
+          Constancia de Protocolo Institucional • NotAI CEDFI
+        </span>
+      </div>
+      <h1 style="margin: 0 0 8px 0; font-size: 21px; font-weight: 800;">
+        E-mail de Envío Realizado: Notificaciones a Tutores por Docente
+      </h1>
+      <p style="margin: 0; font-size: 13px; color: #cbd5e1;">
+        Docente Remitente: <strong style="color: #ffffff;">Prof. ${teacherName}</strong> • Destinatario de Protocolo: <strong style="color: #ffffff;">${protocolEmail}</strong>
+      </p>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #93c5fd;">
+        Período Compilado: <strong style="color: #ffffff;">${periodText}</strong> • Ejecutado: ${executedAt}
+      </p>
+    </div>
+
+    ${redirectNotice ? `
+    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 28px 0 28px;">
+      <div style="font-size: 12px; font-weight: 700; color: #b45309; margin-bottom: 3px;">
+        ⚠️ Aviso de Entrega de Protocolo (Modo Prueba Resend)
+      </div>
+      <div style="font-size: 12px; color: #92400e; line-height: 1.5;">
+        ${redirectNotice}
+      </div>
+    </div>
+    ` : ''}
+
+    <div style="padding: 24px 28px;">
+      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Tutores Notificados</div>
+          <div style="font-size: 20px; font-weight: 800; color: #0f172a; margin-top: 4px;">${totalTutors}</div>
+        </div>
+        <div style="flex: 1; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #166534; font-weight: 600; text-transform: uppercase;">Envíos Exitosos</div>
+          <div style="font-size: 20px; font-weight: 800; color: #15803d; margin-top: 4px;">${successCount}</div>
+        </div>
+        <div style="flex: 1; background-color: ${failureCount > 0 ? '#fef2f2' : '#f8fafc'}; border: 1px solid ${failureCount > 0 ? '#fecaca' : '#e2e8f0'}; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Envíos Fallidos</div>
+          <div style="font-size: 20px; font-weight: 800; color: ${failureCount > 0 ? '#dc2626' : '#475569'}; margin-top: 4px;">${failureCount}</div>
+        </div>
+        <div style="flex: 1; background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: #9a3412; font-weight: 600; text-transform: uppercase;">Total Alertas Remitidas</div>
+          <div style="font-size: 20px; font-weight: 800; color: #c2410c; margin-top: 4px;">${totalAlerts}</div>
+        </div>
+      </div>
+
+      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">
+        1. Bitácora de Despacho a Docentes Tutores
+      </div>
+      <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Tutor / Nivel</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Correo Destino</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Alertas</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; text-align: center;">Estado</th>
+              <th style="padding: 10px 12px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">ID Resend / Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dispatchSummaryRows}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">
+        2. Contenido Íntegro Remitido a Cada Tutor
+      </div>
+      ${tutorContentSections}
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color: #f1f5f9; border-top: 1px solid #e2e8f0; padding: 18px 28px; text-align: center; font-size: 11px; color: #64748b;">
+      <div style="font-weight: 700; color: #334155;">Unidad Educativa de Formación Integral - CEDFI</div>
+      <div>Respaldo institucional automático enviado a ${protocolEmail} • Acción realizada por Prof. ${teacherName}</div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export async function executeTeacherNotificationPipeline(params: TeacherNotificationParams) {
+  const {
+    teacherName,
+    rangeType,
+    customRange,
+    trimestreName = '1º Trimestre',
+    selectedSubject,
+    selectedCourses,
+    activities,
+    grades,
+    students = STUDENTS_DATA as Student[],
+    apiKey,
+    fromEmail,
+    overrideRecipientEmail,
+    protocolRecipientEmail = (typeof process !== 'undefined' ? process.env?.PROTOCOL_AUDIT_EMAIL : undefined) || PROTOCOL_AUDIT_EMAIL,
+    simulatedFallback = false,
+  } = params;
+
+  const periodText = getConfiguredPeriodText(rangeType, customRange, trimestreName);
+
+  // 1. Extract teacher low grades
+  const alerts = extractTeacherLowGrades({
+    activities,
+    grades,
+    students,
+    selectedSubject,
+    selectedCourses,
+    rangeType,
+    customRange,
+    fallbackToSimulatedIfEmpty: simulatedFallback,
+  });
+
+  // 2. Group alerts by tutor
+  const allTutorsReports = groupLowGradesByTutorAndLevel(alerts);
+  // Only include tutors that have alerts or whose assigned courses are among selectedCourses
+  const activeTutorReports = allTutorsReports.filter(t => {
+    if (t.alerts.length > 0) return true;
+    if (selectedCourses && selectedCourses.length > 0) {
+      return t.courses.some(c => selectedCourses.includes(c));
+    }
+    return false;
+  });
+
+  const defaultFallbackEmail = (typeof process !== 'undefined' ? process.env?.TEST_NOTIFICATION_EMAIL : undefined) || 'jorensang@gmail.com';
+  const isResendOnboardingDomain = Boolean(fromEmail && fromEmail.includes('onboarding@resend.dev'));
+
+  const dispatchResults: ProtocolDispatchEntry[] = [];
+
+  // 3. Dispatch to each tutor
+  for (let i = 0; i < activeTutorReports.length; i++) {
+    const report = activeTutorReports[i];
+
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    let targetEmail = overrideRecipientEmail ? overrideRecipientEmail.trim() : report.tutorEmail;
+    let redirected = false;
+    let redirectReason: string | undefined = undefined;
+
+    if (!overrideRecipientEmail && isResendOnboardingDomain && !targetEmail.toLowerCase().includes('gmail.com')) {
+      targetEmail = defaultFallbackEmail;
+      redirected = true;
+      redirectReason = `Redirigido a ${defaultFallbackEmail} porque el remitente actual es onboarding@resend.dev y requiere verificar el dominio institucional @cedfi.edu.ec en resend.com/domains para enviar directamente a los tutores.`;
+    }
+
+    const redirectNotice = redirected 
+      ? `Este reporte corresponde a la tutoría de <strong>${report.tutorName}</strong> (${report.tutorEmail}). Fue entregado a <strong>${targetEmail}</strong> debido a que el remitente actual es de pruebas (<em>onboarding@resend.dev</em>). Para que llegue directamente al correo del docente, verifique su dominio institucional en <strong>resend.com/domains</strong> y configure <code>RESEND_FROM_EMAIL</code>.`
+      : undefined;
+
+    const html = generateTeacherTutorReportHtml({
+      teacherName,
+      tutorName: report.tutorName,
+      tutorEmail: report.tutorEmail,
+      level: report.level,
+      courses: report.courses,
+      alerts: report.alerts,
+      periodText,
+      subjectTitle: selectedSubject !== 'ALL' ? selectedSubject : undefined,
+      redirectNotice,
+    });
+
+    const subjectPrefix = redirected ? `[Tutor: ${report.tutorName}] ` : '';
+    const subject = `${subjectPrefix}[CEDFI NotAI] Notificación de Calificaciones Bajas (< 7/10) - Prof. ${teacherName} (${report.courses.join(', ')})`;
+
+    try {
+      const res = await sendResendEmail({
+        apiKey,
+        from: fromEmail,
+        to: targetEmail,
+        subject,
+        html,
+      });
+
+      dispatchResults.push({
+        tutorName: report.tutorName,
+        tutorEmail: report.tutorEmail,
+        sentTo: targetEmail,
+        level: report.level,
+        courses: report.courses,
+        alertsCount: report.alerts.length,
+        success: true,
+        resendId: res.id,
+        redirected,
+        redirectReason,
+      });
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+
+      if (!redirected && (errMsg.includes('only send testing emails') || errMsg.includes('testing email address'))) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 600));
+
+          const fallbackNotice = `Este reporte corresponde a <strong>${report.tutorName}</strong> (${report.tutorEmail}). Fue redirigido automáticamente a <strong>${defaultFallbackEmail}</strong> porque Resend requiere verificar el dominio @cedfi.edu.ec en resend.com/domains antes de enviar correos a destinatarios externos.`;
+          const fallbackHtml = generateTeacherTutorReportHtml({
+            teacherName,
+            tutorName: report.tutorName,
+            tutorEmail: report.tutorEmail,
+            level: report.level,
+            courses: report.courses,
+            alerts: report.alerts,
+            periodText,
+            subjectTitle: selectedSubject !== 'ALL' ? selectedSubject : undefined,
+            redirectNotice: fallbackNotice,
+          });
+          const fallbackSubject = `[Tutor: ${report.tutorName}] [CEDFI NotAI] Alertas Docente - Prof. ${teacherName} (${report.courses.join(', ')})`;
+
+          const retryRes = await sendResendEmail({
+            apiKey,
+            from: fromEmail,
+            to: defaultFallbackEmail,
+            subject: fallbackSubject,
+            html: fallbackHtml,
+          });
+
+          dispatchResults.push({
+            tutorName: report.tutorName,
+            tutorEmail: report.tutorEmail,
+            sentTo: defaultFallbackEmail,
+            level: report.level,
+            courses: report.courses,
+            alertsCount: report.alerts.length,
+            success: true,
+            resendId: retryRes.id,
+            redirected: true,
+            redirectReason: `Redirigido a ${defaultFallbackEmail} (dominio @cedfi.edu.ec no verificado en Resend).`,
+          });
+          continue;
+        } catch {
+          // Fall through
+        }
+      }
+
+      dispatchResults.push({
+        tutorName: report.tutorName,
+        tutorEmail: report.tutorEmail,
+        sentTo: targetEmail,
+        level: report.level,
+        courses: report.courses,
+        alertsCount: report.alerts.length,
+        success: false,
+        error: errMsg,
+        redirected,
+        redirectReason,
+      });
+    }
+  }
+
+  // 4. Protocol Confirmation Email to jsangurimas@cedfi.edu.ec with full dispatched content
+  await new Promise(resolve => setTimeout(resolve, 600));
+
+  let protocolTargetEmail = protocolRecipientEmail.trim();
+  let protocolRedirected = false;
+  let protocolRedirectReason: string | undefined = undefined;
+
+  if (isResendOnboardingDomain && !protocolTargetEmail.toLowerCase().includes('gmail.com')) {
+    protocolTargetEmail = overrideRecipientEmail ? overrideRecipientEmail.trim() : defaultFallbackEmail;
+    protocolRedirected = true;
+    protocolRedirectReason = `Redirigido a ${protocolTargetEmail} porque el remitente actual es onboarding@resend.dev. Al verificar @cedfi.edu.ec en Resend se entregará directamente a ${protocolRecipientEmail}.`;
+  }
+
+  const protocolRedirectNotice = protocolRedirected
+    ? `Este correo de protocolo de envío realizado está dirigido institucionalmente a <strong>${protocolRecipientEmail}</strong>. Fue entregado en <strong>${protocolTargetEmail}</strong> porque el remitente actual (<em>onboarding@resend.dev</em>) se encuentra en modo prueba.`
+    : undefined;
+
+  const protocolHtml = generateTeacherProtocolAuditHtml({
+    teacherName,
+    periodText,
+    tutorReports: activeTutorReports,
+    dispatches: dispatchResults,
+    protocolEmail: protocolRecipientEmail,
+    redirectNotice: protocolRedirectNotice,
+  });
+
+  const protocolSubject = `[Protocolo Envío Realizado -> ${protocolRecipientEmail}] Notificación Docente: Prof. ${teacherName} a Tutores (${periodText})`;
+
+  let protocolConfirmation: ProtocolConfirmationResult;
+
+  try {
+    const protoRes = await sendResendEmail({
+      apiKey,
+      from: fromEmail,
+      to: protocolTargetEmail,
+      subject: protocolSubject,
+      html: protocolHtml,
+    });
+
+    protocolConfirmation = {
+      protocolEmail: protocolRecipientEmail,
+      sentTo: protocolTargetEmail,
+      success: true,
+      resendId: protoRes.id,
+      redirected: protocolRedirected,
+      redirectReason: protocolRedirectReason,
+    };
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+
+    if (!protocolRedirected && (errMsg.includes('only send testing emails') || errMsg.includes('testing email address'))) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        const fallbackProtoNotice = `Este correo de protocolo de envío realizado corresponde a <strong>${protocolRecipientEmail}</strong>. Fue redirigido automáticamente a <strong>${defaultFallbackEmail}</strong> porque el dominio @cedfi.edu.ec aún no está verificado en Resend.`;
+        const fallbackProtoHtml = generateTeacherProtocolAuditHtml({
+          teacherName,
+          periodText,
+          tutorReports: activeTutorReports,
+          dispatches: dispatchResults,
+          protocolEmail: protocolRecipientEmail,
+          redirectNotice: fallbackProtoNotice,
+        });
+
+        const retryProtoRes = await sendResendEmail({
+          apiKey,
+          from: fromEmail,
+          to: defaultFallbackEmail,
+          subject: protocolSubject,
+          html: fallbackProtoHtml,
+        });
+
+        protocolConfirmation = {
+          protocolEmail: protocolRecipientEmail,
+          sentTo: defaultFallbackEmail,
+          success: true,
+          resendId: retryProtoRes.id,
+          redirected: true,
+          redirectReason: `Redirigido a ${defaultFallbackEmail} (dominio @cedfi.edu.ec no verificado en Resend).`,
+        };
+      } catch (retryErr: any) {
+        protocolConfirmation = {
+          protocolEmail: protocolRecipientEmail,
+          sentTo: protocolTargetEmail,
+          success: false,
+          error: retryErr?.message || errMsg,
+        };
+      }
+    } else {
+      protocolConfirmation = {
+        protocolEmail: protocolRecipientEmail,
+        sentTo: protocolTargetEmail,
+        success: false,
+        error: errMsg,
+      };
+    }
+  }
+
+  const successCount = dispatchResults.filter(r => r.success).length;
+  const failureCount = dispatchResults.filter(r => !r.success).length;
+
+  return {
+    periodText,
+    totalAlerts: alerts.length,
+    tutorsProcessed: activeTutorReports.length,
+    successCount,
+    failureCount,
+    dispatches: dispatchResults,
+    protocolConfirmation,
+  };
+}
