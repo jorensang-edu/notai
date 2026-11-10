@@ -20,7 +20,7 @@ import {
   isEvaFinal,
   APORTE_STYLES
 } from '../utils';
-import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus, PanelLeftClose, PanelLeftOpen, Mail, Pencil, Check, X } from 'lucide-react';
+import { PlusCircle, LogOut, Table, SlidersHorizontal, ChevronDown, ChevronUp, Trash2, Download, StickyNote, Search, BarChart2, AlertTriangle, Info, Plus, PanelLeftClose, PanelLeftOpen, Mail, Pencil, Check, X, FileSpreadsheet } from 'lucide-react';
 import { auth } from '../firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
@@ -114,6 +114,9 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isConsolidadoOpen, setIsConsolidadoOpen] = useState(false);
+  const [consolidadoTrimestre, setConsolidadoTrimestre] = useState<Trimestre | 'ANUAL'>(courseParams.trimestre);
+  const [consolidadoSearch, setConsolidadoSearch] = useState('');
 
   const { permittedCourses, permittedSubjects } = useMemo(() => {
     const allCourses: CourseName[] = [
@@ -885,6 +888,17 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => {
+                  setConsolidadoTrimestre(courseParams.trimestre);
+                  setIsConsolidadoOpen(true);
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer"
+                title="Abrir vista de consolidado de calificaciones y promedios trimestrales"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Consolidado</span>
+              </button>
+              <button
                 onClick={() => setIsNotificationModalOpen(true)}
                 className="hidden sm:flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold transition-all shadow-sm"
                 title="Configurar compilado de semanas y notificar a tutores"
@@ -976,12 +990,16 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                   </h2>
                   <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                     <button
-                      onClick={handleExportConsolidatedExcel}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/20"
-                      title="Descargar consolidado de todos los trimestres"
+                      onClick={() => {
+                        setConsolidadoTrimestre(courseParams.trimestre);
+                        setIsConsolidadoOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
+                      title="Abrir vista de consolidado de calificaciones y promedios trimestrales"
                     >
-                      <Download className="w-4 h-4" />
-                      <span className="hidden sm:inline">Consolidado</span>
+                      <FileSpreadsheet className="w-4 h-4" />
+                      <span className="hidden sm:inline">Consolidado de Calificaciones</span>
+                      <span className="sm:hidden">Consolidado</span>
                     </button>
                     <button
                       onClick={handleExportExcel}
@@ -1108,12 +1126,9 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                           </div>
                         </th>
 
-                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/10 bg-[#0f172a] md:sticky md:right-[95px] z-20 text-slate-300" rowSpan={2}>
+                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/10 bg-[#0f172a] md:sticky md:right-0 z-20 text-slate-300" rowSpan={2}>
                           Total Ref. Global<br/>
                           <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
-                        </th>
-                        <th className="px-3 py-2 md:px-4 md:py-3 font-semibold text-center border-b border-l border-white/10 bg-[#0f172a] md:sticky md:right-0 z-20 text-slate-300" rowSpan={2}>
-                          Promedio Trimestral
                         </th>
                       </tr>
 
@@ -1325,16 +1340,9 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                             </td>
 
                             {/* Total Refuerzos */}
-                            <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-[95px] z-10 transition-colors">
+                            <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
                               <span className="font-bold text-base text-blue-400 font-mono">
                                 {totalReinforcements}
-                              </span>
-                            </td>
-
-                            {/* Promedio Trimestral */}
-                            <td className="px-3 py-2 md:px-4 md:py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
-                              <span className={`font-bold text-base font-mono ${avgTrimestral !== null && avgTrimestral < 7 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                {formatGrade(avgTrimestral)}
                               </span>
                             </td>
                           </tr>
@@ -1342,7 +1350,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                       })}
                       {filteredStudents.length === 0 && (
                         <tr>
-                          <td colSpan={trimesterActivitiesGrouped.total + 5} className="px-6 py-12 text-center text-slate-500 italic">
+                          <td colSpan={trimesterActivitiesGrouped.total + 4} className="px-6 py-12 text-center text-slate-500 italic">
                             No hay estudiantes registrados.
                           </td>
                         </tr>
@@ -1363,16 +1371,28 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                 </span>
               </h2>
               
-              {!isCreatingActivity ? (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsCreatingActivity(true)}
-                  disabled={isUnauthorized}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all flex items-center gap-2 ${isUnauthorized ? 'bg-slate-700 text-slate-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}
+                  onClick={() => {
+                    setConsolidadoTrimestre(courseParams.trimestre);
+                    setIsConsolidadoOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-lg text-sm font-medium bg-indigo-600/80 hover:bg-indigo-600 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Abrir vista de consolidado de calificaciones con promedios trimestrales"
                 >
-                  <PlusCircle className="w-4 h-4" />
-                  Nueva Actividad
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span className="hidden sm:inline">Consolidado</span>
                 </button>
-              ) : (
+                {!isCreatingActivity ? (
+                  <button
+                    onClick={() => setIsCreatingActivity(true)}
+                    disabled={isUnauthorized}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all flex items-center gap-2 ${isUnauthorized ? 'bg-slate-700 text-slate-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Nueva Actividad
+                  </button>
+                ) : (
                 <form onSubmit={handleCreateActivity} className="flex flex-wrap items-center gap-3 bg-black/20 p-3 md:p-2 rounded-lg border border-white/10">
                   <input
                     type="text"
@@ -1419,6 +1439,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                   </button>
                 </form>
               )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-auto">
@@ -1563,9 +1584,26 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                         </th>
                       )
                     })}
-                    <th className="px-4 py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-[90px] z-20" rowSpan={2}>
-                      Promedio<br/>{selectedComponent === 'ALL' ? 'Trimestral' : 'Aporte'}
-                    </th>
+                    {selectedComponent === 'ALL' ? (
+                      <>
+                        <th className="px-3 py-2 font-semibold text-center border-b border-l border-blue-500/30 bg-[#0f172a] text-blue-300 min-w-[95px]" rowSpan={2}>
+                          Prom. Aporte 1<br/>
+                          <span className="text-[10px] text-blue-400/80 font-normal">(40%)</span>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-center border-b border-l border-emerald-500/30 bg-[#0f172a] text-emerald-300 min-w-[95px]" rowSpan={2}>
+                          Prom. Aporte 2<br/>
+                          <span className="text-[10px] text-emerald-400/80 font-normal">(40%)</span>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-center border-b border-l border-purple-500/30 bg-[#0f172a] text-purple-300 min-w-[95px]" rowSpan={2}>
+                          Prom. Eva. Final<br/>
+                          <span className="text-[10px] text-purple-400/80 font-normal">(20%)</span>
+                        </th>
+                      </>
+                    ) : (
+                      <th className="px-4 py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-[90px] z-20 min-w-[100px]" rowSpan={2}>
+                        Promedio<br/>{selectedComponent}
+                      </th>
+                    )}
                     <th className="px-4 py-3 font-semibold text-center border-b border-l border-white/5 bg-[#0f172a] md:sticky md:right-0 z-20" rowSpan={2}>
                       Refuerzos<br/>Totales<br/>
                       <span className="text-[10px] text-blue-400 font-normal">({currentSubject})</span>
@@ -1610,12 +1648,12 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
 
                     const evaluated = studentActivitiesData.filter(a => a.finalGrade !== null);
                     
-                    let avg = null;
-                    if (selectedComponent === 'ALL') {
-                      avg = calculateTrimestralAverage(student.id, activities, grades, courseParams.trimestre, selectedCourse, currentSubject);
-                    } else {
-                      avg = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, selectedComponent as any, selectedCourse, currentSubject);
-                    }
+                    const avgAporte1 = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, 'APORTE 1', selectedCourse, currentSubject);
+                    const avgAporte2 = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, 'APORTE 2', selectedCourse, currentSubject);
+                    const avgEvaFinal = calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, 'EVA. FINAL', selectedCourse, currentSubject);
+                    const singleAvg = selectedComponent !== 'ALL'
+                      ? calculateComponentAverage(student.id, activities, grades, courseParams.trimestre, selectedComponent as any, selectedCourse, currentSubject)
+                      : null;
 
                     const missingReinforcements = evaluated.filter(a => {
                       if (isEvaFinal(a.activity.component)) {
@@ -1844,17 +1882,37 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                           );
                         })}
                         
-                        {/* Promedio Total Row */}
-                        <td className="px-4 py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-[90px] z-10 transition-colors">
-                          <div className={'text-base font-bold ' + (avg !== null && avg < 7 ? 'text-rose-400' : 'text-emerald-400')} title="Promedio del periodo seleccionado">
-                            {formatGrade(avg)}
-                          </div>
-                          {missingReinforcements.length > 0 && (
-                            <div className="mt-1 text-[9px] sm:text-[10px] text-amber-400 leading-tight">
-                              Falta Ref: {missingReinforcements.length} act.
+                        {/* Promedios por Aporte o por Componente individual */}
+                        {selectedComponent === 'ALL' ? (
+                          <>
+                            <td className="px-3 py-2 text-center border-l border-blue-500/20 bg-blue-950/20">
+                              <span className="font-mono font-bold text-sm text-blue-300">
+                                {formatGrade(avgAporte1)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center border-l border-emerald-500/20 bg-emerald-950/20">
+                              <span className="font-mono font-bold text-sm text-emerald-300">
+                                {formatGrade(avgAporte2)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center border-l border-purple-500/20 bg-purple-950/20">
+                              <span className="font-mono font-bold text-sm text-purple-300">
+                                {formatGrade(avgEvaFinal)}
+                              </span>
+                            </td>
+                          </>
+                        ) : (
+                          <td className="px-4 py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-[90px] z-10 transition-colors">
+                            <div className={'text-base font-bold ' + (singleAvg !== null && singleAvg < 7 ? 'text-rose-400' : 'text-emerald-400')} title={`Promedio de ${selectedComponent}`}>
+                              {formatGrade(singleAvg)}
                             </div>
-                          )}
-                        </td>
+                            {missingReinforcements.length > 0 && (
+                              <div className="mt-1 text-[9px] sm:text-[10px] text-amber-400 leading-tight">
+                                Falta Ref: {missingReinforcements.length} act.
+                              </div>
+                            )}
+                          </td>
+                        )}
                         {/* Refuerzos Totales Row */}
                         <td className="px-4 py-3 text-center border-l border-white/5 bg-[#0f172a] group-hover:bg-[#162032] md:sticky md:right-0 z-10 transition-colors">
                           <span className="font-bold text-base text-blue-400" title="Total de refuerzos acumulados en la materia">
@@ -1866,7 +1924,7 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
                   })}
                   {filteredStudents.length === 0 && (
                     <tr>
-                      <td colSpan={(displayActivities.length * 5) + 3} className="px-6 py-12 text-center text-slate-500 italic">
+                      <td colSpan={(displayActivities.length * 6) + (selectedComponent === 'ALL' ? 5 : 3)} className="px-6 py-12 text-center text-slate-500 italic">
                         No hay estudiantes registrados.
                       </td>
                     </tr>
@@ -2072,6 +2130,398 @@ export function DocenteView({ onLogout, store, teacherCode }: DocenteViewProps) 
           <span>⚠</span>
           <span>{actionFeedback}</span>
           <button onClick={() => setActionFeedback(null)} className="ml-3 font-bold hover:text-amber-200">✕</button>
+        </div>
+      )}
+
+      {/* Vista de Consolidado de Calificaciones Modal */}
+      {isConsolidadoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-hidden">
+          <div className="bg-[#0b1120] border border-white/10 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-white/5 border-b border-white/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-md shadow-indigo-950/40">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    Consolidado de Calificaciones y Promedios Trimestrales
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    <span className="text-blue-400 font-semibold">{selectedCourse}</span> • 
+                    <span className="text-slate-200 ml-1 font-medium">{currentSubject}</span> • 
+                    <span className="text-slate-400 ml-1">Docente: {teacherName}</span> • 
+                    <span className="text-slate-400 ml-1">{courseParams.period}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  onClick={handleExportConsolidatedExcel}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
+                  title="Descargar documento completo con los aportes de todos los trimestres (.xlsx)"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar Documento con Aportes (.xlsx)</span>
+                </button>
+                <button
+                  onClick={() => setIsConsolidadoOpen(false)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  title="Cerrar ventana"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Trimester Tabs and Filters */}
+            <div className="px-5 py-3 bg-[#0f172a]/80 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10">
+                {(['1º Trimestre', '2º Trimestre', '3º Trimestre', 'ANUAL'] as const).map(t => {
+                  const isActive = consolidadoTrimestre === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setConsolidadoTrimestre(t)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                      }`}
+                    >
+                      {t === 'ANUAL' ? 'Consolidado Anual' : t}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Student Search */}
+              <div className="relative min-w-[220px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar estudiante..."
+                  value={consolidadoSearch}
+                  onChange={(e) => setConsolidadoSearch(e.target.value)}
+                  className="w-full bg-[#0b1120] border border-white/10 rounded-xl py-1.5 pl-9 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Statistics Mini Cards */}
+            {(() => {
+              const filteredConsolidadoStudents = filteredStudents.filter(s => {
+                if (!consolidadoSearch.trim()) return true;
+                const q = consolidadoSearch.toLowerCase().trim();
+                return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
+              });
+
+              let approvedCount = 0;
+              let lowCount = 0;
+              let totalAvgSum = 0;
+              let evaluatedCount = 0;
+
+              filteredConsolidadoStudents.forEach(student => {
+                const finalAvg = consolidadoTrimestre === 'ANUAL'
+                  ? calculateAnnualAverage(student.id, activities, grades, selectedCourse, currentSubject)
+                  : calculateTrimestralAverage(student.id, activities, grades, consolidadoTrimestre, selectedCourse, currentSubject);
+                
+                if (finalAvg !== null) {
+                  evaluatedCount++;
+                  totalAvgSum += finalAvg;
+                  if (finalAvg >= 7) approvedCount++;
+                  else lowCount++;
+                }
+              });
+
+              const courseOverallAvg = evaluatedCount > 0 ? (totalAvgSum / evaluatedCount) : null;
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-white/[0.02] border-b border-white/5 shrink-0 text-xs">
+                  <div className="bg-slate-900/60 border border-white/10 rounded-xl p-3 flex flex-col justify-between">
+                    <span className="text-slate-400 font-medium">Estudiantes Evaluados</span>
+                    <span className="text-lg font-bold text-white font-mono mt-1">
+                      {evaluatedCount} <span className="text-xs text-slate-500 font-normal">/ {filteredConsolidadoStudents.length}</span>
+                    </span>
+                  </div>
+
+                  <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-3 flex flex-col justify-between">
+                    <span className="text-indigo-300 font-medium">
+                      {consolidadoTrimestre === 'ANUAL' ? 'Promedio General Anual' : `Promedio General ${consolidadoTrimestre}`}
+                    </span>
+                    <span className={`text-lg font-bold font-mono mt-1 ${courseOverallAvg !== null && courseOverallAvg < 7 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {formatGrade(courseOverallAvg)}
+                    </span>
+                  </div>
+
+                  <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-3 flex flex-col justify-between">
+                    <span className="text-emerald-300 font-medium">Aprobados (&ge; 7.00)</span>
+                    <span className="text-lg font-bold text-emerald-400 font-mono mt-1">
+                      {approvedCount}
+                    </span>
+                  </div>
+
+                  <div className="bg-rose-950/30 border border-rose-500/20 rounded-xl p-3 flex flex-col justify-between">
+                    <span className="text-rose-300 font-medium">Por Mejorar / Menores a 7</span>
+                    <span className="text-lg font-bold text-rose-400 font-mono mt-1">
+                      {lowCount}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Consolidated Table */}
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-left border-collapse min-w-max text-xs sm:text-sm">
+                <thead className="bg-[#0f172a] text-slate-400 uppercase tracking-wider sticky top-0 z-30 shadow-md text-[11px]">
+                  <tr>
+                    <th className="px-3 py-3 font-semibold text-center border-b border-r border-white/10 w-12 bg-[#0f172a]">
+                      Nº
+                    </th>
+                    <th className="px-3 py-3 font-semibold border-b border-r border-white/10 w-28 bg-[#0f172a]">
+                      Código
+                    </th>
+                    <th className="px-4 py-3 font-semibold border-b border-r border-white/10 min-w-[200px] bg-[#0f172a]">
+                      Estudiante
+                    </th>
+
+                    {consolidadoTrimestre !== 'ANUAL' ? (
+                      <>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-blue-500/30 bg-blue-950/50 text-blue-300 min-w-[120px]">
+                          Prom. APORTE 1<br/>
+                          <span className="text-[10px] text-blue-400/80 font-normal">(40%)</span>
+                        </th>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-emerald-500/30 bg-emerald-950/50 text-emerald-300 min-w-[120px]">
+                          Prom. APORTE 2<br/>
+                          <span className="text-[10px] text-emerald-400/80 font-normal">(40%)</span>
+                        </th>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-purple-500/30 bg-purple-950/50 text-purple-300 min-w-[120px]">
+                          Prom. EVA. FINAL<br/>
+                          <span className="text-[10px] text-purple-400/80 font-normal">(20%)</span>
+                        </th>
+                        <th className="px-4 py-3 font-bold text-center border-b border-r border-indigo-500/40 bg-indigo-950/70 text-indigo-200 min-w-[150px]">
+                          PROMEDIO TRIMESTRAL<br/>
+                          <span className="text-[10px] text-indigo-300/80 font-normal">({consolidadoTrimestre})</span>
+                        </th>
+                        <th className="px-3 py-3 font-semibold text-center border-b border-r border-white/10 min-w-[110px] bg-[#0f172a]">
+                          Estado
+                        </th>
+                        <th className="px-3 py-3 font-semibold text-center border-b border-white/10 min-w-[90px] bg-[#0f172a]">
+                          Refuerzos
+                        </th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-white/10 bg-slate-900 text-slate-300 min-w-[110px]">
+                          1º Trimestre
+                        </th>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-white/10 bg-slate-900 text-slate-300 min-w-[110px]">
+                          2º Trimestre
+                        </th>
+                        <th className="px-3 py-3 font-bold text-center border-b border-r border-white/10 bg-slate-900 text-slate-300 min-w-[110px]">
+                          3º Trimestre
+                        </th>
+                        <th className="px-4 py-3 font-bold text-center border-b border-r border-indigo-500/40 bg-indigo-950/70 text-indigo-200 min-w-[150px]">
+                          PROMEDIO ANUAL
+                        </th>
+                        <th className="px-3 py-3 font-semibold text-center border-b border-r border-white/10 min-w-[110px] bg-[#0f172a]">
+                          Estado
+                        </th>
+                        <th className="px-3 py-3 font-semibold text-center border-b border-white/10 min-w-[90px] bg-[#0f172a]">
+                          Refuerzos Totales
+                        </th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-white/5 font-mono">
+                  {(() => {
+                    const studentsToShow = filteredStudents.filter(s => {
+                      if (!consolidadoSearch.trim()) return true;
+                      const q = consolidadoSearch.toLowerCase().trim();
+                      return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
+                    });
+
+                    if (studentsToShow.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="px-6 py-12 text-center text-slate-500 italic font-sans">
+                            No se encontraron estudiantes para mostrar en el consolidado.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return studentsToShow.map((student, idx) => {
+                      const totalRef = countStudentReinforcementsForSubject(student.id, activities, grades, currentSubject, selectedCourse);
+
+                      if (consolidadoTrimestre !== 'ANUAL') {
+                        const avgA1 = calculateComponentAverage(student.id, activities, grades, consolidadoTrimestre, 'APORTE 1', selectedCourse, currentSubject);
+                        const avgA2 = calculateComponentAverage(student.id, activities, grades, consolidadoTrimestre, 'APORTE 2', selectedCourse, currentSubject);
+                        const avgEF = calculateComponentAverage(student.id, activities, grades, consolidadoTrimestre, 'EVA. FINAL', selectedCourse, currentSubject);
+                        const avgTrim = calculateTrimestralAverage(student.id, activities, grades, consolidadoTrimestre, selectedCourse, currentSubject);
+                        const isApproved = avgTrim !== null && avgTrim >= 7;
+
+                        return (
+                          <tr key={student.id} className="hover:bg-white/5 transition-colors">
+                            <td className="px-3 py-2.5 text-center text-slate-500 border-r border-white/5">
+                              {idx + 1}
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-400 font-mono border-r border-white/5 text-xs">
+                              {student.code}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans font-semibold text-slate-200 border-r border-white/5">
+                              {student.name}
+                            </td>
+
+                            {/* Promedio Aporte 1 */}
+                            <td className="px-3 py-2.5 text-center border-r border-blue-500/20 bg-blue-950/10 text-blue-300 font-bold">
+                              {formatGrade(avgA1)}
+                            </td>
+
+                            {/* Promedio Aporte 2 */}
+                            <td className="px-3 py-2.5 text-center border-r border-emerald-500/20 bg-emerald-950/10 text-emerald-300 font-bold">
+                              {formatGrade(avgA2)}
+                            </td>
+
+                            {/* Promedio Eva. Final */}
+                            <td className="px-3 py-2.5 text-center border-r border-purple-500/20 bg-purple-950/10 text-purple-300 font-bold">
+                              {formatGrade(avgEF)}
+                            </td>
+
+                            {/* PROMEDIO TRIMESTRAL */}
+                            <td className="px-4 py-2.5 text-center border-r border-indigo-500/30 bg-indigo-950/20">
+                              <span className={`text-base font-bold px-2.5 py-0.5 rounded-lg inline-block ${
+                                avgTrim === null 
+                                  ? 'text-slate-500' 
+                                  : avgTrim >= 7 
+                                    ? 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30' 
+                                    : 'text-rose-300 bg-rose-500/10 border border-rose-500/30'
+                              }`}>
+                                {formatGrade(avgTrim)}
+                              </span>
+                            </td>
+
+                            {/* Estado */}
+                            <td className="px-3 py-2.5 text-center font-sans border-r border-white/5">
+                              {avgTrim === null ? (
+                                <span className="text-xs text-slate-500 italic">Sin evaluar</span>
+                              ) : isApproved ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                  Aprobado
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                                  Req. Refuerzo
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Total Refuerzos */}
+                            <td className="px-3 py-2.5 text-center border-white/5 font-bold text-blue-400">
+                              {totalRef}
+                            </td>
+                          </tr>
+                        );
+                      } else {
+                        // Consolidado Anual
+                        const t1 = calculateTrimestralAverage(student.id, activities, grades, '1º Trimestre', selectedCourse, currentSubject);
+                        const t2 = calculateTrimestralAverage(student.id, activities, grades, '2º Trimestre', selectedCourse, currentSubject);
+                        const t3 = calculateTrimestralAverage(student.id, activities, grades, '3º Trimestre', selectedCourse, currentSubject);
+                        const anual = calculateAnnualAverage(student.id, activities, grades, selectedCourse, currentSubject);
+                        const isApproved = anual !== null && anual >= 7;
+
+                        return (
+                          <tr key={student.id} className="hover:bg-white/5 transition-colors">
+                            <td className="px-3 py-2.5 text-center text-slate-500 border-r border-white/5">
+                              {idx + 1}
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-400 font-mono border-r border-white/5 text-xs">
+                              {student.code}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans font-semibold text-slate-200 border-r border-white/5">
+                              {student.name}
+                            </td>
+
+                            <td className="px-3 py-2.5 text-center border-r border-white/5 text-slate-300">
+                              {formatGrade(t1)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center border-r border-white/5 text-slate-300">
+                              {formatGrade(t2)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center border-r border-white/5 text-slate-300">
+                              {formatGrade(t3)}
+                            </td>
+
+                            {/* PROMEDIO ANUAL */}
+                            <td className="px-4 py-2.5 text-center border-r border-indigo-500/30 bg-indigo-950/20">
+                              <span className={`text-base font-bold px-2.5 py-0.5 rounded-lg inline-block ${
+                                anual === null 
+                                  ? 'text-slate-500' 
+                                  : anual >= 7 
+                                    ? 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30' 
+                                    : 'text-rose-300 bg-rose-500/10 border border-rose-500/30'
+                              }`}>
+                                {formatGrade(anual)}
+                              </span>
+                            </td>
+
+                            {/* Estado */}
+                            <td className="px-3 py-2.5 text-center font-sans border-r border-white/5">
+                              {anual === null ? (
+                                <span className="text-xs text-slate-500 italic">En curso</span>
+                              ) : isApproved ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                  Aprobado
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                                  Supletorio / Riesgo
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-2.5 text-center border-white/5 font-bold text-blue-400">
+                              {totalRef}
+                            </td>
+                          </tr>
+                        );
+                      }
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 bg-white/5 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400 shrink-0">
+              <p>
+                ℹ El <b>Promedio Trimestral</b> consolida los tres aportes ponderados: <b>40% Aporte 1</b> + <b>40% Aporte 2</b> + <b>20% Eva. Final</b>.
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportConsolidatedExcel}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar Documento con Aportes (.xlsx)</span>
+                </button>
+                <button
+                  onClick={() => setIsConsolidadoOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg font-medium transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
