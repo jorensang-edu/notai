@@ -6,7 +6,9 @@ import {
   computeActivityFinalGrade, 
   formatGrade, 
   getCurrentFormattedDate, 
-  countStudentReinforcementsForSubject 
+  countStudentReinforcementsForSubject,
+  normalizeAporte,
+  APORTE_STYLES
 } from '../utils';
 import { 
   Users, 
@@ -128,7 +130,7 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
       const subjectActivities = activities.filter(a => {
         if (a.course !== currentStudent.course || a.subject !== subject) return false;
         if (selectedTrimestre !== 'ALL' && a.trimestre !== selectedTrimestre) return false;
-        if (selectedComponent !== 'ALL' && a.component !== selectedComponent) return false;
+        if (selectedComponent !== 'ALL' && normalizeAporte(a.component) !== normalizeAporte(selectedComponent)) return false;
         return true;
       });
 
@@ -464,9 +466,9 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
                 className="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-purple-500"
               >
                 <option value="ALL">Todos los Aportes (Consolidado)</option>
-                <option value="1º APORTE">1º APORTE</option>
-                <option value="2º APORTE">2º APORTE</option>
-                <option value="EVALUACIÓN FINAL">EVALUACIÓN FINAL</option>
+                <option value="APORTE 1">APORTE 1</option>
+                <option value="APORTE 2">APORTE 2</option>
+                <option value="EVA. FINAL">EVA. FINAL</option>
               </select>
 
               <button
@@ -766,7 +768,15 @@ export function TutoriaView({ store, tutorCode, onLogout, isAdmin: propIsAdmin }
                                             {row.activity.name}
                                           </td>
                                           <td className="py-2.5 px-3 font-sans text-slate-400 text-[11px]">
-                                            {row.activity.component}
+                                            {(() => {
+                                              const norm = normalizeAporte(row.activity.component);
+                                              const style = APORTE_STYLES[norm] || APORTE_STYLES['APORTE 1'];
+                                              return (
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${style.badge}`}>
+                                                  {norm}
+                                                </span>
+                                              );
+                                            })()}
                                           </td>
                                           <td className="py-2.5 px-3 text-slate-400 text-[11px]">
                                             {row.activity.date}

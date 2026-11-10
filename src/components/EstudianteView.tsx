@@ -10,9 +10,14 @@ import {
   calculateAnnualAverage,
   computeActivityFinalGrade,
   countStudentReinforcementsForSubject,
-  getStudentGlobalImprovementStats
+  getStudentGlobalImprovementStats,
+  normalizeAporte,
+  isAporte1,
+  isAporte2,
+  isEvaFinal,
+  APORTE_STYLES
 } from '../utils';
-import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download, CheckCircle2 } from 'lucide-react';
+import { Search, LogOut, Calendar, AlertCircle, User, GraduationCap, Download, CheckCircle2, Columns3, Clock, Award } from 'lucide-react';
 import { auth } from '../firebase';
 import { validateEmailForRole, checkCodeBinding, saveCodeBinding, getEmailDomainType } from '../authUtils';
 
@@ -37,6 +42,8 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectName>('Matemáticas');
   const [selectedTrimestre, setSelectedTrimestre] = useState<Trimestre | 'ALL'>('ALL');
   const [selectedComponent, setSelectedComponent] = useState<EvaluationComponent | 'ALL'>('ALL');
+
+  const [viewMode, setViewMode] = useState<'columns' | 'history'>('columns');
 
   const isTeacherOrAdmin = domainType === 'docente' || domainType === 'admin';
 
@@ -85,7 +92,7 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
       a.course === currentStudent.course && 
       a.subject === selectedSubject &&
       (selectedTrimestre === 'ALL' || a.trimestre === selectedTrimestre) &&
-      (selectedComponent === 'ALL' || a.component === selectedComponent)
+      (selectedComponent === 'ALL' || normalizeAporte(a.component) === normalizeAporte(selectedComponent) || a.component === selectedComponent)
     );
     
     // Total reinforcements filtered strictly by selectedSubject for this student across all trimestres
@@ -129,14 +136,37 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
 
     const average = gradedCount > 0 ? totalScore / gradedCount : null;
 
-    const activeTrimestre = selectedTrimestre === 'ALL' ? (courseParams?.trimestre || '1º Trimestre') : selectedTrimestre;
+    const activeTrimestre: Trimestre = selectedTrimestre === 'ALL' ? (courseParams?.trimestre || '1º Trimestre') : selectedTrimestre;
 
     const averageAporte = selectedComponent !== 'ALL'
       ? calculateComponentAverage(currentStudent.id, activities, grades, activeTrimestre, selectedComponent as any, currentStudent.course, selectedSubject)
       : average;
 
+    const averageAporte1 = calculateComponentAverage(currentStudent.id, activities, grades, activeTrimestre, 'APORTE 1', currentStudent.course, selectedSubject);
+    const averageAporte2 = calculateComponentAverage(currentStudent.id, activities, grades, activeTrimestre, 'APORTE 2', currentStudent.course, selectedSubject);
+    const averageEvaFinal = calculateComponentAverage(currentStudent.id, activities, grades, activeTrimestre, 'EVA. FINAL', currentStudent.course, selectedSubject);
+
     const averageTrimestral = calculateTrimestralAverage(currentStudent.id, activities, grades, activeTrimestre, currentStudent.course, selectedSubject);
     const averageAnual = calculateAnnualAverage(currentStudent.id, activities, grades, currentStudent.course, selectedSubject);
+
+    // Group activities for the active trimester into the 3 canonical aportes
+    const trimesterActivities = activities.filter(a => 
+      a.course === currentStudent.course &&
+      a.subject === selectedSubject &&
+      (a.trimestre === activeTrimestre || (!a.trimestre && activeTrimestre === '1º Trimestre'))
+    );
+
+    const mapActDetails = (actList: typeof activities) => {
+      return actList.map(activity => {
+        const grade = grades.find(g => g.studentId === currentStudent.id && g.activityId === activity.id);
+        const { finalGrade, origEq10, efDetails } = computeActivityFinalGrade(activity, grade);
+        return { activity, grade, finalGrade, origEq10, efDetails };
+      });
+    };
+
+    const aporte1Items = mapActDetails(trimesterActivities.filter(a => isAporte1(a.component)));
+    const aporte2Items = mapActDetails(trimesterActivities.filter(a => isAporte2(a.component)));
+    const evaFinalItems = mapActDetails(trimesterActivities.filter(a => isEvaFinal(a.component)));
 
     return { 
       history, 
@@ -144,9 +174,16 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
       requiresReinforcement, 
       average, 
       averageAporte, 
+      averageAporte1,
+      averageAporte2,
+      averageEvaFinal,
       averageTrimestral, 
       averageAnual, 
-      totalReinforcementsSubject 
+      totalReinforcementsSubject,
+      activeTrimestre,
+      aporte1Items,
+      aporte2Items,
+      evaFinalItems
     };
   }, [currentStudent, activities, grades, selectedSubject, selectedTrimestre, selectedComponent, courseParams]);
 
@@ -675,227 +712,537 @@ export function EstudianteView({ onLogout, store }: EstudianteViewProps) {
                 className="flex-1 px-4 py-2 bg-[#0f172a] border border-white/10 rounded-lg focus:outline-none focus:border-emerald-500 text-sm font-semibold text-slate-200"
               >
                 <option value="ALL">Todos los Aportes</option>
-                <option value="1º APORTE">1º APORTE</option>
-                <option value="2º APORTE">2º APORTE</option>
-                <option value="EVALUACIÓN FINAL">EVALUACIÓN FINAL</option>
+                <option value="APORTE 1">APORTE 1</option>
+                <option value="APORTE 2">APORTE 2</option>
+                <option value="EVA. FINAL">EVA. FINAL</option>
                 <option value="SUPLETORIO">SUPLETORIO</option>
               </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
-            <div className="md:col-span-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden flex flex-col">
-              <div className="px-4 py-3 md:px-6 md:py-4 bg-white/5 border-b border-white/10">
-                <h3 className="font-bold flex items-center gap-2">Historial Cronológico</h3>
+          {/* Consolidated Trimester Calculation Banner & View Switcher */}
+          <div className="bg-gradient-to-r from-slate-900/90 via-[#0f172a]/95 to-slate-900/90 backdrop-blur-md border border-white/10 p-4 rounded-2xl mb-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <span className="text-xs uppercase tracking-wider font-bold text-slate-400 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                {studentData?.activeTrimestre}
+              </span>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <span className="px-2.5 py-1 rounded-md bg-blue-500/15 text-blue-300 border border-blue-500/30 font-semibold" title="Ponderación: 40%">
+                  APORTE 1 (40%): <strong className="text-white">{formatGrade(studentData?.averageAporte1)}</strong>
+                </span>
+                <span className="text-slate-500 font-bold">+</span>
+                <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold" title="Ponderación: 40%">
+                  APORTE 2 (40%): <strong className="text-white">{formatGrade(studentData?.averageAporte2)}</strong>
+                </span>
+                <span className="text-slate-500 font-bold">+</span>
+                <span className="px-2.5 py-1 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 font-semibold" title="Ponderación: 20%">
+                  EVA. FINAL (20%): <strong className="text-white">{formatGrade(studentData?.averageEvaFinal)}</strong>
+                </span>
+                <span className="text-slate-500 font-bold">=</span>
+                <span className={`px-3 py-1 rounded-md font-bold text-sm ${studentData?.averageTrimestral !== null && studentData?.averageTrimestral! < 7 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}`}>
+                  PROMEDIO: {formatGrade(studentData?.averageTrimestral)}
+                </span>
               </div>
-              <div className="p-4 md:p-6 space-y-6 overflow-y-auto">
-                {studentData?.history.length === 0 ? (
-                  <p className="text-slate-500 italic text-sm">No hay actividades registradas.</p>
-                ) : (
-                  studentData?.history.map(({ activity, grade, finalGrade, origEq10, efDetails }) => {
-                    const isReinforcement = finalGrade !== null && finalGrade < 7;
-                    const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
-                    return (
-                      <div key={activity.id} className="relative pl-6 pb-2 border-l border-white/10 last:border-0 last:pb-0">
-                        <div className={`absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full ${isReinforcement ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'}`}></div>
-                        
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 mb-2">
-                          <div>
-                            <p className="font-bold text-slate-200">{activity.name}</p>
-                            <p className="text-[11px] sm:text-xs text-slate-500 uppercase tracking-widest mt-0.5">{activity.component}</p>
-                          </div>
-                          <div className="flex items-center gap-1 text-xs font-mono text-slate-400 bg-black/20 px-2 py-1 rounded border border-white/5 w-fit">
-                            <Calendar className="w-3 h-3" />
-                            {grade?.lastUpdated || activity.date}
-                          </div>
-                        </div>
+            </div>
 
-                        <div className="bg-black/20 rounded-xl p-4 border border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
-                          <div>
-                            <p className="text-xs text-slate-500 mb-1">{isEvalFinal ? 'Evaluación Escrita' : 'Nota Original'}</p>
-                            <p className="font-mono text-slate-300">
-                              {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)} / ${activity.maxScore || 10}` : '-'}
-                            </p>
-                          </div>
-                          {isEvalFinal && activity.hasGlobalization && (
+            <div className="flex items-center gap-2 bg-black/40 p-1 rounded-xl border border-white/10 shrink-0 self-end md:self-auto">
+              <button
+                onClick={() => setViewMode('columns')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === 'columns'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Columns3 className="w-3.5 h-3.5" />
+                <span>3 Columnas (Aportes)</span>
+              </button>
+              <button
+                onClick={() => setViewMode('history')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === 'history'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Historial Cronológico</span>
+              </button>
+            </div>
+          </div>
+
+          {viewMode === 'columns' ? (
+            /* 3 DISTINCT COLUMNS BY APORTE */
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+              {/* COLUMNA 1: APORTE 1 */}
+              <div className="bg-white/5 backdrop-blur-md border border-blue-500/30 rounded-2xl overflow-hidden flex flex-col shadow-lg shadow-blue-950/20">
+                <div className="px-4 py-3 bg-blue-950/40 border-b border-blue-500/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></span>
+                    <h3 className="font-bold text-sm text-blue-300 tracking-wide">APORTE 1</h3>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      40%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-sans">Promedio</span>
+                    <span className={`text-sm font-mono font-bold ${studentData?.averageAporte1 !== null && studentData?.averageAporte1! < 7 ? 'text-amber-400' : 'text-blue-300'}`}>
+                      {formatGrade(studentData?.averageAporte1)} / 10
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[650px]">
+                  {(!studentData?.aporte1Items || studentData.aporte1Items.length === 0) ? (
+                    <div className="text-center py-12 px-4">
+                      <p className="text-slate-500 text-xs italic">No hay insumos registrados en APORTE 1 para este trimestre.</p>
+                    </div>
+                  ) : (
+                    studentData.aporte1Items.map(({ activity, grade, finalGrade, origEq10 }) => {
+                      const isLow = finalGrade !== null && finalGrade < 7;
+                      return (
+                        <div key={activity.id} className="bg-black/30 border border-blue-500/20 hover:border-blue-500/40 rounded-xl p-3.5 transition-all space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="text-xs text-slate-500 mb-1">Globalización (20%)</p>
-                              <p className="font-mono text-slate-300">
-                                {grade?.globalizationGrade != null ? `${formatGrade(grade.globalizationGrade)} / ${activity.globalizationMaxScore || 10}` : '-'}
-                              </p>
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-xs text-slate-500 mb-1">Nota Inicial (Eq. 10)</p>
-                            <p className="font-mono text-blue-400 font-semibold">
-                              {origEq10 !== null ? formatGrade(origEq10) : '-'}
-                            </p>
-                          </div>
-                          {!isEvalFinal && activity.component !== 'MEJORAMIENTO' && (
-                            <div>
-                              <p className="text-xs text-slate-500 mb-1">Refuerzo</p>
-                              {grade?.reinforcementGrade != null ? (
-                                <p className="font-mono text-emerald-400">
-                                  {formatGrade(grade.reinforcementGrade)} / {activity.reinforcementMaxScore || activity.maxScore || 10}
-                                </p>
-                              ) : (
-                                <p className="font-mono text-slate-600">-</p>
+                              <p className="font-bold text-slate-200 text-sm leading-snug">{activity.name}</p>
+                              {activity.date && (
+                                <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3 text-blue-400/70" /> {activity.date}
+                                </span>
                               )}
                             </div>
-                          )}
-                          <div>
-                            <p className="text-xs text-slate-500 mb-1">Definitiva</p>
-                            <span className={`font-bold px-2 py-1 rounded border text-xs inline-block ${isReinforcement ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border font-mono shrink-0 ${isLow ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-blue-500/15 text-blue-300 border-blue-500/30'}`}>
                               {finalGrade !== null ? formatGrade(finalGrade) : '-'}
                             </span>
                           </div>
-                        </div>
 
-                        {/* Detalle del Proceso de Mejoramiento para Evaluación Final */}
-                        {isEvalFinal && efDetails && (
-                          <div className="mt-3 p-3 bg-purple-950/20 rounded-xl border border-purple-500/20 space-y-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-xs font-bold text-purple-300 uppercase tracking-wider">
-                                Proceso de Mejoramiento de Evaluación Final
-                              </p>
-                              {efDetails.category === 'refuerzo' && (
-                                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
-                                  Mejora con Refuerzo (0.01 - 6.99)
-                                </span>
+                          <div className="grid grid-cols-3 gap-2 text-xs bg-black/20 p-2 rounded-lg border border-white/5 font-mono">
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Original</span>
+                              <span className="text-slate-300 font-medium">
+                                {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)}/${activity.maxScore || 10}` : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Eq. 10</span>
+                              <span className="text-blue-400 font-semibold">{formatGrade(origEq10)}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Refuerzo</span>
+                              {grade?.reinforcementGrade != null ? (
+                                <span className="text-emerald-400 font-semibold">{formatGrade(grade.reinforcementGrade)}</span>
+                              ) : (
+                                <span className="text-slate-600">-</span>
                               )}
-                              {efDetails.category === 'directa' && (
-                                <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-medium">
-                                  Mejora Directa (7.00 - 8.99)
-                                </span>
-                              )}
-                              {efDetails.category === 'none' && (
-                                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
-                                  Calificación ≥ 9.00 (Sin mejoramiento)
+                            </div>
+                          </div>
+
+                          {grade?.observation && (
+                            <p className="text-[11px] text-slate-400 italic bg-white/5 p-2 rounded border border-white/5">
+                              "{grade.observation}"
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* COLUMNA 2: APORTE 2 */}
+              <div className="bg-white/5 backdrop-blur-md border border-emerald-500/30 rounded-2xl overflow-hidden flex flex-col shadow-lg shadow-emerald-950/20">
+                <div className="px-4 py-3 bg-emerald-950/40 border-b border-emerald-500/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+                    <h3 className="font-bold text-sm text-emerald-300 tracking-wide">APORTE 2</h3>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      40%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-sans">Promedio</span>
+                    <span className={`text-sm font-mono font-bold ${studentData?.averageAporte2 !== null && studentData?.averageAporte2! < 7 ? 'text-amber-400' : 'text-emerald-300'}`}>
+                      {formatGrade(studentData?.averageAporte2)} / 10
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[650px]">
+                  {(!studentData?.aporte2Items || studentData.aporte2Items.length === 0) ? (
+                    <div className="text-center py-12 px-4">
+                      <p className="text-slate-500 text-xs italic">No hay insumos registrados en APORTE 2 para este trimestre.</p>
+                    </div>
+                  ) : (
+                    studentData.aporte2Items.map(({ activity, grade, finalGrade, origEq10 }) => {
+                      const isLow = finalGrade !== null && finalGrade < 7;
+                      return (
+                        <div key={activity.id} className="bg-black/30 border border-emerald-500/20 hover:border-emerald-500/40 rounded-xl p-3.5 transition-all space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-slate-200 text-sm leading-snug">{activity.name}</p>
+                              {activity.date && (
+                                <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3 text-emerald-400/70" /> {activity.date}
                                 </span>
                               )}
                             </div>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border font-mono shrink-0 ${isLow ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'}`}>
+                              {finalGrade !== null ? formatGrade(finalGrade) : '-'}
+                            </span>
+                          </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                              {/* Trabajo de Refuerzo */}
-                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                                <span className="text-slate-400 block mb-1 font-medium">Trabajo de Refuerzo</span>
-                                {efDetails.category === 'refuerzo' ? (
-                                  efDetails.workEq10 !== null ? (
-                                    <p className="font-mono font-bold text-amber-400">
-                                      {grade?.improvementWorkGrade} / {activity.improvementWorkMaxScore || 10}
-                                      <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.workEq10)} / 10)</span>
-                                    </p>
-                                  ) : (
-                                    <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
-                                  )
+                          <div className="grid grid-cols-3 gap-2 text-xs bg-black/20 p-2 rounded-lg border border-white/5 font-mono">
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Original</span>
+                              <span className="text-slate-300 font-medium">
+                                {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)}/${activity.maxScore || 10}` : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Eq. 10</span>
+                              <span className="text-emerald-400 font-semibold">{formatGrade(origEq10)}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Refuerzo</span>
+                              {grade?.reinforcementGrade != null ? (
+                                <span className="text-emerald-400 font-semibold">{formatGrade(grade.reinforcementGrade)}</span>
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {grade?.observation && (
+                            <p className="text-[11px] text-slate-400 italic bg-white/5 p-2 rounded border border-white/5">
+                              "{grade.observation}"
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* COLUMNA 3: EVA. FINAL */}
+              <div className="bg-white/5 backdrop-blur-md border border-purple-500/30 rounded-2xl overflow-hidden flex flex-col shadow-lg shadow-purple-950/20">
+                <div className="px-4 py-3 bg-purple-950/40 border-b border-purple-500/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]"></span>
+                    <h3 className="font-bold text-sm text-purple-300 tracking-wide">EVA. FINAL</h3>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      20%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-sans">Promedio</span>
+                    <span className={`text-sm font-mono font-bold ${studentData?.averageEvaFinal !== null && studentData?.averageEvaFinal! < 7 ? 'text-amber-400' : 'text-purple-300'}`}>
+                      {formatGrade(studentData?.averageEvaFinal)} / 10
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[650px]">
+                  {(!studentData?.evaFinalItems || studentData.evaFinalItems.length === 0) ? (
+                    <div className="text-center py-12 px-4">
+                      <p className="text-slate-500 text-xs italic">No hay evaluación final registrada para este trimestre.</p>
+                    </div>
+                  ) : (
+                    studentData.evaFinalItems.map(({ activity, grade, finalGrade, origEq10, efDetails }) => {
+                      const isLow = finalGrade !== null && finalGrade < 7;
+                      return (
+                        <div key={activity.id} className="bg-black/30 border border-purple-500/20 hover:border-purple-500/40 rounded-xl p-3.5 transition-all space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-slate-200 text-sm leading-snug">{activity.name}</p>
+                              {activity.date && (
+                                <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3 text-purple-400/70" /> {activity.date}
+                                </span>
+                              )}
+                            </div>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border font-mono shrink-0 ${isLow ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-purple-500/15 text-purple-300 border-purple-500/30'}`}>
+                              {finalGrade !== null ? formatGrade(finalGrade) : '-'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-black/20 p-2.5 rounded-lg border border-white/5 font-mono">
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Escrita</span>
+                              <span className="text-slate-300 font-medium">
+                                {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)}/${activity.maxScore || 10}` : '-'}
+                              </span>
+                            </div>
+                            {activity.hasGlobalization && (
+                              <div>
+                                <span className="text-[9px] text-slate-500 block">Glob. (20%)</span>
+                                <span className="text-purple-300 font-medium">
+                                  {grade?.globalizationGrade != null ? `${formatGrade(grade.globalizationGrade)}/${activity.globalizationMaxScore || 10}` : '-'}
+                                </span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-[9px] text-slate-500 block">Nota Inicial</span>
+                              <span className="text-blue-400 font-semibold">{formatGrade(origEq10)}</span>
+                            </div>
+                          </div>
+
+                          {/* Mejoramiento details if applicable */}
+                          {efDetails && (
+                            <div className="p-2.5 bg-purple-950/30 rounded-lg border border-purple-500/20 text-xs space-y-2">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="font-bold text-purple-300 uppercase">Mejoramiento</span>
+                                <span className="text-slate-400">
+                                  {efDetails.category === 'refuerzo' ? 'Refuerzo (<7)' : efDetails.category === 'directa' ? 'Directa (7-8.99)' : '≥ 9.00'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                                <div>
+                                  <span className="text-[9px] text-slate-400 block">Trabajo:</span>
+                                  <span className="text-amber-300">
+                                    {grade?.improvementWorkGrade != null ? `${grade.improvementWorkGrade} (${formatGrade(efDetails.workEq10)})` : (efDetails.category === 'refuerzo' ? 'Pendiente' : 'N/A')}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] text-slate-400 block">Examen:</span>
+                                  <span className="text-purple-300">
+                                    {grade?.improvementExamGrade != null ? `${grade.improvementExamGrade} (${formatGrade(efDetails.examEq10)})` : (efDetails.requiresExam ? 'Pendiente' : 'N/A')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {efDetails.statusMessage && (
+                                <p className="text-[10px] text-slate-300 italic pt-1 border-t border-white/5">
+                                  {efDetails.statusMessage}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {grade?.observation && (
+                            <p className="text-[11px] text-slate-400 italic bg-white/5 p-2 rounded border border-white/5">
+                              "{grade.observation}"
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* HISTORIAL CRONOLOGICO VIEW */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6 mb-6">
+              <div className="md:col-span-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+                <div className="px-4 py-3 md:px-6 md:py-4 bg-white/5 border-b border-white/10 flex items-center justify-between">
+                  <h3 className="font-bold flex items-center gap-2">Historial Cronológico Completo</h3>
+                  <span className="text-xs text-slate-400 font-mono">{studentData?.history.length || 0} actividades</span>
+                </div>
+                <div className="p-4 md:p-6 space-y-6 overflow-y-auto max-h-[700px]">
+                  {studentData?.history.length === 0 ? (
+                    <p className="text-slate-500 italic text-sm">No hay actividades registradas.</p>
+                  ) : (
+                    studentData?.history.map(({ activity, grade, finalGrade, origEq10, efDetails }) => {
+                      const isReinforcement = finalGrade !== null && finalGrade < 7;
+                      const isEvalFinal = isEvaFinal(activity.component);
+                      const aporteNorm = normalizeAporte(activity.component);
+                      return (
+                        <div key={activity.id} className="relative pl-6 pb-2 border-l border-white/10 last:border-0 last:pb-0">
+                          <div className={`absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full ${isReinforcement ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'}`}></div>
+                          
+                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 mb-2">
+                            <div>
+                              <p className="font-bold text-slate-200">{activity.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                                  aporteNorm === 'APORTE 1' 
+                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
+                                    : aporteNorm === 'APORTE 2'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                }`}>
+                                  {aporteNorm}
+                                </span>
+                                {activity.trimestre && (
+                                  <span className="text-[10px] font-mono text-slate-400 bg-black/20 px-1.5 py-0.5 rounded border border-white/5">
+                                    {activity.trimestre}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs font-mono text-slate-400 bg-black/20 px-2 py-1 rounded border border-white/5 w-fit">
+                              <Calendar className="w-3 h-3" />
+                              {grade?.lastUpdated || activity.date}
+                            </div>
+                          </div>
+
+                          <div className="bg-black/20 rounded-xl p-4 border border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">{isEvalFinal ? 'Evaluación Escrita' : 'Nota Original'}</p>
+                              <p className="font-mono text-slate-300">
+                                {grade?.originalGrade != null ? `${formatGrade(grade.originalGrade)} / ${activity.maxScore || 10}` : '-'}
+                              </p>
+                            </div>
+                            {isEvalFinal && activity.hasGlobalization && (
+                              <div>
+                                <p className="text-xs text-slate-500 mb-1">Globalización (20%)</p>
+                                <p className="font-mono text-slate-300">
+                                  {grade?.globalizationGrade != null ? `${formatGrade(grade.globalizationGrade)} / ${activity.globalizationMaxScore || 10}` : '-'}
+                                </p>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">Nota Inicial (Eq. 10)</p>
+                              <p className="font-mono text-blue-400 font-semibold">
+                                {origEq10 !== null ? formatGrade(origEq10) : '-'}
+                              </p>
+                            </div>
+                            {!isEvalFinal && activity.component !== 'MEJORAMIENTO' && (
+                              <div>
+                                <p className="text-xs text-slate-500 mb-1">Refuerzo</p>
+                                {grade?.reinforcementGrade != null ? (
+                                  <p className="font-mono text-emerald-400">
+                                    {formatGrade(grade.reinforcementGrade)} / {activity.reinforcementMaxScore || activity.maxScore || 10}
+                                  </p>
                                 ) : (
-                                  <p className="text-slate-500 italic">No aplica (Nota ≥ 7.00)</p>
+                                  <p className="font-mono text-slate-600">-</p>
+                                )}
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">Definitiva</p>
+                              <span className={`font-bold px-2 py-1 rounded border text-xs inline-block ${isReinforcement ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                                {finalGrade !== null ? formatGrade(finalGrade) : '-'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Detalle del Proceso de Mejoramiento para Evaluación Final */}
+                          {isEvalFinal && efDetails && (
+                            <div className="mt-3 p-3 bg-purple-950/20 rounded-xl border border-purple-500/20 space-y-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-bold text-purple-300 uppercase tracking-wider">
+                                  Proceso de Mejoramiento de Evaluación Final
+                                </p>
+                                {efDetails.category === 'refuerzo' && (
+                                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                                    Mejora con Refuerzo (0.01 - 6.99)
+                                  </span>
+                                )}
+                                {efDetails.category === 'directa' && (
+                                  <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-medium">
+                                    Mejora Directa (7.00 - 8.99)
+                                  </span>
+                                )}
+                                {efDetails.category === 'none' && (
+                                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                                    Calificación ≥ 9.00 (Sin mejoramiento)
+                                  </span>
                                 )}
                               </div>
 
-                              {/* Examen de Mejoramiento */}
-                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                                <span className="text-slate-400 block mb-1 font-medium">Examen de Mejoramiento</span>
-                                {efDetails.examEq10 !== null ? (
-                                  <p className="font-mono font-bold text-purple-400">
-                                    {grade?.improvementExamGrade} / {activity.improvementExamMaxScore || 10}
-                                    <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.examEq10)} / 10)</span>
-                                  </p>
-                                ) : (
-                                  efDetails.category === 'refuerzo' ? (
-                                    <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                  <span className="text-slate-400 block mb-1 font-medium">Trabajo de Refuerzo</span>
+                                  {efDetails.category === 'refuerzo' ? (
+                                    efDetails.workEq10 !== null ? (
+                                      <p className="font-mono font-bold text-amber-400">
+                                        {grade?.improvementWorkGrade} / {activity.improvementWorkMaxScore || 10}
+                                        <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.workEq10)} / 10)</span>
+                                      </p>
+                                    ) : (
+                                      <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
+                                    )
                                   ) : (
-                                    efDetails.category === 'directa' ? (
+                                    <p className="text-slate-500 italic">No aplica (Nota ≥ 7.00)</p>
+                                  )}
+                                </div>
+
+                                <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                  <span className="text-slate-400 block mb-1 font-medium">Examen de Mejoramiento</span>
+                                  {efDetails.examEq10 !== null ? (
+                                    <p className="font-mono font-bold text-purple-400">
+                                      {grade?.improvementExamGrade} / {activity.improvementExamMaxScore || 10}
+                                      <span className="text-slate-400 font-normal ml-1">({formatGrade(efDetails.examEq10)} / 10)</span>
+                                    </p>
+                                  ) : (
+                                    efDetails.category === 'refuerzo' ? (
+                                      <p className="text-amber-400/90 italic font-medium">Obligatorio (Pendiente)</p>
+                                    ) : efDetails.category === 'directa' ? (
                                       <p className="text-slate-500 italic">Opcional (No presentado)</p>
                                     ) : (
                                       <p className="text-slate-500 italic">No aplica (Nota ≥ 9.00)</p>
                                     )
-                                  )
-                                )}
+                                  )}
+                                </div>
+
+                                <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                                  <span className="text-slate-400 block mb-1 font-medium">Promedio Obtenido</span>
+                                  <p className="font-mono font-bold text-slate-200">
+                                    {efDetails.calculatedAvg !== null ? `${formatGrade(efDetails.calculatedAvg)} / 10` : '-'}
+                                  </p>
+                                </div>
                               </div>
 
-                              {/* Promedio Calculado */}
-                              <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
-                                <span className="text-slate-400 block mb-1 font-medium">Promedio Obtenido</span>
-                                <p className="font-mono font-bold text-slate-200">
-                                  {efDetails.calculatedAvg !== null ? `${formatGrade(efDetails.calculatedAvg)} / 10` : '-'}
-                                </p>
-                              </div>
+                              {efDetails.hasNoRecord && (
+                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
+                                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                  <div className="text-xs text-amber-200 space-y-1">
+                                    <p className="font-bold text-amber-300">
+                                      Alerta en Evaluación Final: Calificación menor a 7.00 puntos
+                                    </p>
+                                    <p className="text-amber-200/90 leading-relaxed">
+                                      Obtuviste una calificación menor a 7.00 puntos ({formatGrade(efDetails.origEq10)}/10.00). Al no registrarse ninguna nota de mejoramiento, se mantiene la calificación original de {formatGrade(efDetails.origEq10)}.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {efDetails.noImprovement && !efDetails.hasNoRecord && (
+                                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5">
+                                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                                  <div className="text-xs text-slate-200 space-y-1">
+                                    <p className="font-bold text-rose-400">
+                                      No hubo mejora de calificación de evaluación final
+                                    </p>
+                                    <p className="text-slate-300 leading-relaxed">
+                                      El nuevo promedio ({formatGrade(efDetails.calculatedAvg)}) es menor o igual a la nota original ({formatGrade(efDetails.origEq10)}). Se mantiene la calificación original de <strong className="text-white font-bold">{formatGrade(efDetails.origEq10)}</strong>.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {efDetails.improved && (
+                                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5">
+                                  <div className="text-xs text-slate-200 space-y-1">
+                                    <p className="font-bold text-emerald-400">¡Mejora de calificación aplicada!</p>
+                                    <p className="text-slate-300 leading-relaxed">
+                                      Incrementó de <span className="line-through text-slate-400">{formatGrade(efDetails.origEq10)}</span> a <strong className="text-emerald-400 font-bold">{formatGrade(efDetails.finalGrade)}</strong>.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
+                          )}
 
-                            {/* Mensajes explícitos según requerimientos normativos */}
-                            {efDetails.hasNoRecord && (
-                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
-                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                <div className="text-xs text-amber-200 space-y-1">
-                                  <p className="font-bold text-amber-300">
-                                    Alerta en Evaluación Final: Calificación menor a 7.00 puntos
-                                  </p>
-                                  <p className="text-amber-200/90 leading-relaxed">
-                                    Obtuviste una calificación menor a 7.00 puntos ({formatGrade(efDetails.origEq10)}/10.00). Al no registrarse ninguna nota de mejoramiento (trabajo de refuerzo y examen escrito), <strong>para el cálculo trimestral se mantiene la calificación original de {formatGrade(efDetails.origEq10)}</strong>.
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {efDetails.noImprovement && !efDetails.hasNoRecord && (
-                              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5">
-                                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                                <div className="text-xs text-slate-200 space-y-1">
-                                  <p className="font-bold text-rose-400">
-                                    No hubo mejora de calificación de evaluación final
-                                  </p>
-                                  <p className="text-slate-300 leading-relaxed">
-                                    El nuevo promedio resultante del proceso de mejoramiento ({formatGrade(efDetails.calculatedAvg)}) es menor o igual a la nota original ({formatGrade(efDetails.origEq10)}). 
-                                    Por regla de protección al estudiante, se mantiene la calificación original de <strong className="text-white font-bold">{formatGrade(efDetails.origEq10)}</strong>.
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {efDetails.improved && (
-                              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5">
-                                <div className="text-xs text-slate-200 space-y-1">
-                                  <p className="font-bold text-emerald-400">
-                                    ¡Mejora de calificación aplicada!
-                                  </p>
-                                  <p className="text-slate-300 leading-relaxed">
-                                    El proceso de mejoramiento incrementó con éxito su calificación de <span className="line-through text-slate-400">{formatGrade(efDetails.origEq10)}</span> a <strong className="text-emerald-400 font-bold">{formatGrade(efDetails.finalGrade)}</strong>.
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {efDetails.isPending && !efDetails.hasNoRecord && (
-                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
-                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                <div className="text-xs text-amber-200 space-y-1">
-                                  <p className="font-bold text-amber-300">
-                                    Proceso de mejoramiento en curso
-                                  </p>
-                                  <p className="text-amber-200/90 leading-relaxed">
-                                    {efDetails.category === 'refuerzo' 
-                                      ? 'Al tener una calificación inferior a 7.00 en la Evaluación Final, se requiere registrar tanto el trabajo de refuerzo como el examen de mejoramiento para computar su nota definitiva.'
-                                      : 'Pendiente de confirmación de calificación de examen de mejoramiento.'}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {grade?.observation && (
-                          <div className="mt-4 pt-3 border-t border-white/5">
-                            <p className="text-xs text-slate-500 mb-1 font-semibold uppercase tracking-wider">Observación del Docente:</p>
-                            <p className="text-sm text-slate-300 italic">"{grade.observation}"</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
+                          {grade?.observation && (
+                            <div className="mt-4 pt-3 border-t border-white/5">
+                              <p className="text-xs text-slate-500 mb-1 font-semibold uppercase tracking-wider">Observación del Docente:</p>
+                              <p className="text-sm text-slate-300 italic">"{grade.observation}"</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
             <div className="space-y-6 flex flex-col">
               <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden p-4 md:p-6">

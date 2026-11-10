@@ -18,11 +18,12 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "maxLength": 150 },
-        "component": { "type": "string", "enum": ["1º APORTE", "2º APORTE", "EVALUACIÓN FINAL", "SUPLETORIO", "MEJORAMIENTO"] },
+        "component": { "type": "string", "enum": ["APORTE 1", "APORTE 2", "EVA. FINAL", "1º APORTE", "2º APORTE", "EVALUACIÓN FINAL", "SUPLETORIO", "MEJORAMIENTO"] },
         "date": { "type": "string", "maxLength": 20 },
         "course": { "type": "string", "maxLength": 50 },
         "subject": { "type": "string", "maxLength": 50 },
         "trimestre": { "type": "string", "maxLength": 50 },
+        "teacherEmail": { "type": "string", "maxLength": 100 },
         "maxScore": { "type": "number" },
         "reinforcementMaxScore": { "type": "number" },
         "globalizationMaxScore": { "type": "number" },

@@ -32,7 +32,8 @@ import {
   consolidateAlertsByStudent,
   PROTOCOL_AUDIT_EMAIL,
   ProtocolDispatchEntry,
-  ProtocolConfirmationResult
+  ProtocolConfirmationResult,
+  LowGradeAlertItem
 } from '../services/emailReportService';
 
 interface TeacherTutorNotificationModalProps {
@@ -81,6 +82,9 @@ export function TeacherTutorNotificationModal({
   const [deliveryMode, setDeliveryMode] = useState<'real' | 'pilot'>('real');
   const [testEmail, setTestEmail] = useState('jorensang@gmail.com');
   const [customApiKey, setCustomApiKey] = useState('');
+
+  // Modo de visualización de alertas: 'by-course' (formato 6 columnas) o 'by-student' (dossier consolidado)
+  const [alertDisplayMode, setAlertDisplayMode] = useState<'by-course' | 'by-student'>('by-course');
 
   // Selector de tutor para vista previa
   const [selectedPreviewTutorIndex, setSelectedPreviewTutorIndex] = useState(0);
@@ -141,6 +145,20 @@ export function TeacherTutorNotificationModal({
   // Consolidado de alertas por estudiante
   const consolidatedStudents = useMemo(() => {
     return consolidateAlertsByStudent(detectedAlerts);
+  }, [detectedAlerts]);
+
+  // Consolidado de alertas por curso (Formato oficial requerido: 6 columnas)
+  const alertsByCourse = useMemo(() => {
+    const map = new Map<string, LowGradeAlertItem[]>();
+    detectedAlerts.forEach(a => {
+      const c = a.course || 'Sin Curso';
+      if (!map.has(c)) map.set(c, []);
+      map.get(c)!.push(a);
+    });
+    return Array.from(map.entries()).map(([course, items]) => ({
+      course,
+      items: items.sort((x, y) => x.studentName.localeCompare(y.studentName) || x.subject.localeCompare(y.subject)),
+    }));
   }, [detectedAlerts]);
 
   // Agrupación por Tutor de los cursos seleccionados
@@ -458,7 +476,7 @@ export function TeacherTutorNotificationModal({
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                     {[
-                      { type: '1-week', label: '1 Semana', desc: 'Últimos 7 días' },
+                      { type: '1-week', label: 'Semana Previa', desc: 'Últimos 7 días' },
                       { type: '2-weeks', label: '2 Semanas', desc: 'Últimos 14 días' },
                       { type: '3-weeks', label: '3 Semanas', desc: 'Últimos 21 días' },
                       { type: '4-weeks', label: '4 Semanas', desc: 'Último mes (28d)' },
@@ -678,97 +696,219 @@ export function TeacherTutorNotificationModal({
                   ))}
                 </div>
 
-                {/* Consolidated student cards */}
-                {consolidatedStudents.length > 0 ? (
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {consolidatedStudents.map((st, idx) => {
-                      const isMulti = st.alerts.length > 1;
-                      const isCritical = st.lowestGrade < 5.0;
+                {/* Display Mode Toggle */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setAlertDisplayMode('by-course')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                        alertDisplayMode === 'by-course'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Por Curso (Formato Oficial: 6 Columnas)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlertDisplayMode('by-student')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                        alertDisplayMode === 'by-student'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Por Estudiante (Dossier Consolidado)
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {alertDisplayMode === 'by-course' 
+                      ? 'Asignatura • Título • Fecha • Estudiante • Nota • Observaciones' 
+                      : 'Agrupado por casos individuales'}
+                  </span>
+                </div>
 
-                      return (
-                        <div 
-                          key={`${st.studentCode}_${st.course}`}
-                          className={`rounded-xl border p-3.5 transition-all ${
-                            isCritical 
-                              ? 'bg-rose-950/20 border-rose-500/40' 
-                              : isMulti 
-                                ? 'bg-amber-950/20 border-amber-500/40' 
-                                : 'bg-slate-900/90 border-slate-800'
-                          }`}
-                        >
-                          {/* Student Header */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+                {/* VISTA 1: POR CURSO (FORMATO OFICIAL REQUERIDO: 6 COLUMNAS) */}
+                {alertDisplayMode === 'by-course' && (
+                  <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
+                    {alertsByCourse.length > 0 ? (
+                      alertsByCourse.map(({ course, items }) => (
+                        <div key={course} className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                          <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="w-5 h-5 rounded-md bg-blue-600/30 text-blue-300 border border-blue-500/30 text-[10px] font-bold flex items-center justify-center">
-                                {idx + 1}
-                              </span>
-                              <div>
-                                <span className="text-xs font-bold text-white">
-                                  {st.studentName}
-                                </span>
-                                <div className="text-[10px] text-slate-400">
-                                  Cód: <span className="text-slate-300 font-mono">{st.studentCode}</span> • Curso: <span className="text-blue-300 font-semibold">{st.course}</span> • {st.level}
-                                </div>
-                              </div>
+                              <span className="text-xs font-bold text-white">Curso: {course}</span>
+                              <span className="text-[10px] text-slate-400">({items.length} {items.length === 1 ? 'registro' : 'registros'})</span>
                             </div>
-
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                isCritical 
-                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' 
-                                  : isMulti 
-                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
-                                    : 'bg-slate-800 text-slate-300 border-slate-700'
-                              }`}>
-                                {st.alerts.length} {st.alerts.length === 1 ? 'alerta' : 'alertas acumuladas'}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                Mín: <strong className="text-rose-400">{st.lowestGrade.toFixed(2)}</strong> | Prom: {st.averageGrade.toFixed(2)}
-                              </span>
-                            </div>
+                            <span className="text-[10px] font-semibold text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                              Notas &lt; 7.00
+                            </span>
                           </div>
 
-                          {/* Individual evaluations under student */}
-                          <div className="mt-2 space-y-1.5">
-                            {st.alerts.map((al, aIdx) => (
-                              <div 
-                                key={aIdx} 
-                                className="flex items-center justify-between gap-3 text-[11px] p-2 rounded-lg bg-slate-950/60 border border-slate-800/60"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-semibold text-slate-200">{al.subject}</span>
-                                    <span className="text-[10px] text-slate-400">({al.component})</span>
-                                  </div>
-                                  <div className="text-[10px] text-slate-400 truncate">
-                                    {al.activityName} • <span className="text-slate-500">{al.date}</span>
-                                  </div>
-                                  {al.observation && (
-                                    <div className="text-[10px] text-slate-400 italic truncate mt-0.5">
-                                      💬 {al.observation}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-950/60 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                  <th className="py-2 px-3">Asignatura</th>
+                                  <th className="py-2 px-3">Título de la actividad</th>
+                                  <th className="py-2 px-3">Fecha</th>
+                                  <th className="py-2 px-3">Estudiante</th>
+                                  <th className="py-2 px-3 text-center">Nota alcanzada</th>
+                                  <th className="py-2 px-3">Observaciones</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                {items.map((row, rIdx) => {
+                                  const gradeColor = row.grade < 5.0 ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' : 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+                                  const obsText = (row.observation && row.observation.trim().length > 0)
+                                    ? row.observation.trim()
+                                    : 'Requiere recuperación esta semana.';
+
+                                  return (
+                                    <tr key={rIdx} className="hover:bg-slate-800/40 transition-colors">
+                                      <td className="py-2 px-3 font-sans font-medium text-slate-200">
+                                        {row.subject}
+                                        <div className="text-[10px] text-slate-500">{row.component}</div>
+                                      </td>
+                                      <td className="py-2 px-3 font-sans text-slate-300 max-w-[200px] truncate" title={row.activityName}>
+                                        {row.activityName}
+                                      </td>
+                                      <td className="py-2 px-3 text-slate-400 whitespace-nowrap">
+                                        {row.date}
+                                      </td>
+                                      <td className="py-2 px-3 font-sans">
+                                        <div className="font-bold text-slate-100">{row.studentName}</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Cód: {row.studentCode}</div>
+                                      </td>
+                                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                                        <span className={`inline-block px-2 py-0.5 rounded font-bold border ${gradeColor}`}>
+                                          {row.grade.toFixed(2)} / 10
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-3 font-sans text-slate-300 text-[11px]">
+                                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] border ${
+                                          obsText === 'Requiere recuperación esta semana.'
+                                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                                        }`}>
+                                          {obsText}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-emerald-300 text-xs">
+                        🎉 ¡Excelente! No se registraron calificaciones inferiores a 7.00/10 en el período y cursos configurados.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* VISTA 2: POR ESTUDIANTE (DOSSIER CONSOLIDADO) */}
+                {alertDisplayMode === 'by-student' && (
+                  <div>
+                    {consolidatedStudents.length > 0 ? (
+                      <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                        {consolidatedStudents.map((st, idx) => {
+                          const isMulti = st.alerts.length > 1;
+                          const isCritical = st.lowestGrade < 5.0;
+
+                          return (
+                            <div 
+                              key={`${st.studentCode}_${st.course}`}
+                              className={`rounded-xl border p-3.5 transition-all ${
+                                isCritical 
+                                  ? 'bg-rose-950/20 border-rose-500/40' 
+                                  : isMulti 
+                                    ? 'bg-amber-950/20 border-amber-500/40' 
+                                    : 'bg-slate-900/90 border-slate-800'
+                              }`}
+                            >
+                              {/* Student Header */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-md bg-blue-600/30 text-blue-300 border border-blue-500/30 text-[10px] font-bold flex items-center justify-center">
+                                    {idx + 1}
+                                  </span>
+                                  <div>
+                                    <span className="text-xs font-bold text-white">
+                                      {st.studentName}
+                                    </span>
+                                    <div className="text-[10px] text-slate-400">
+                                      Cód: <span className="text-slate-300 font-mono">{st.studentCode}</span> • Curso: <span className="text-blue-300 font-semibold">{st.course}</span> • {st.level}
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
 
-                                <div className="text-right shrink-0">
-                                  <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border ${
-                                    al.grade < 5.0 
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isCritical 
                                       ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' 
-                                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                      : isMulti 
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                                        : 'bg-slate-800 text-slate-300 border-slate-700'
                                   }`}>
-                                    {al.grade.toFixed(2)} / 10
+                                    {st.alerts.length} {st.alerts.length === 1 ? 'alerta' : 'alertas acumuladas'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    Mín: <strong className="text-rose-400">{st.lowestGrade.toFixed(2)}</strong> | Prom: {st.averageGrade.toFixed(2)}
                                   </span>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-emerald-300 text-xs">
-                    🎉 ¡Excelente! No se registraron calificaciones inferiores a 7.00/10 en el período y cursos configurados.
+
+                              {/* Individual evaluations under student */}
+                              <div className="mt-2 space-y-1.5">
+                                {st.alerts.map((al, aIdx) => {
+                                  const obsText = (al.observation && al.observation.trim().length > 0)
+                                    ? al.observation.trim()
+                                    : 'Requiere recuperación esta semana.';
+
+                                  return (
+                                    <div 
+                                      key={aIdx} 
+                                      className="flex items-center justify-between gap-3 text-[11px] p-2 rounded-lg bg-slate-950/60 border border-slate-800/60"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-semibold text-slate-200">{al.subject}</span>
+                                          <span className="text-[10px] text-slate-400">({al.component})</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 truncate">
+                                          {al.activityName} • <span className="text-slate-500">{al.date}</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 italic truncate mt-0.5">
+                                          💬 {obsText}
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right shrink-0">
+                                        <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border ${
+                                          al.grade < 5.0 
+                                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' 
+                                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                        }`}>
+                                          {al.grade.toFixed(2)} / 10
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-emerald-300 text-xs">
+                        🎉 ¡Excelente! No se registraron calificaciones inferiores a 7.00/10 en el período y cursos configurados.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

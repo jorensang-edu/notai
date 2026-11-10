@@ -131,7 +131,7 @@ export function isDateWithinLastDays(dateStrOrTs?: string | number | null, days 
 }
 
 /**
- * Formats a friendly week period string (e.g., "19/09/2026 al 26/09/2026")
+ * Formats a friendly week period string (e.g., "Semana Previa: 19/09/2026 al 26/09/2026")
  */
 export function getWeeklyPeriodText(days = 7): string {
   const end = new Date();
@@ -144,7 +144,7 @@ export function getWeeklyPeriodText(days = 7): string {
     return `${day}/${month}/${year}`;
   };
 
-  return `${formatDate(start)} al ${formatDate(end)}`;
+  return `Semana Previa (${formatDate(start)} al ${formatDate(end)})`;
 }
 
 /**
@@ -183,14 +183,12 @@ export function extractLowGradesFromData(
 
       // Filter strictly less than 7/10
       if (effectiveGrade !== null && effectiveGrade < 7.00) {
-        let obs = g.observation || '';
+        let obs = (g.observation || '').trim();
         if (!obs) {
           if (efDetails?.statusMessage) {
             obs = efDetails.statusMessage;
-          } else if (effectiveGrade < 5.00) {
-            obs = 'Riesgo crítico: Calificación significativamente baja';
           } else {
-            obs = 'Alerta académica: Requiere refuerzo pedagógico';
+            obs = 'Requiere recuperación esta semana.';
           }
         }
 
@@ -203,7 +201,7 @@ export function extractLowGradesFromData(
           subject: activity.subject,
           activityName: activity.name,
           component: activity.component,
-          date: activity.date || 'Semana Actual',
+          date: activity.date || 'Semana Previa',
           grade: Math.trunc(effectiveGrade * 100) / 100,
           observation: obs,
         });
@@ -232,7 +230,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Básica Superior',
       subject: 'Matemáticas',
       activityName: 'Taller 2: Operaciones con Números Enteros',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '22/09/2026',
       grade: 5.50,
       observation: 'Dificultad en aplicación de ley de signos. Requiere refuerzo pedagógico.',
@@ -245,7 +243,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Básica Superior',
       subject: 'Ciencias Naturales',
       activityName: 'Evaluación Corta: Estructura Celular',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '23/09/2026',
       grade: 6.20,
       observation: 'Incompleto el cuadro comparativo de orgánulos celulares.',
@@ -259,7 +257,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Básica Superior',
       subject: 'Lengua y Literatura',
       activityName: 'Control de Lectura: Crónica Literaria',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '21/09/2026',
       grade: 5.80,
       observation: 'Falta argumentación y cohesión textual en redacción.',
@@ -273,7 +271,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Básica Superior',
       subject: 'Matemáticas',
       activityName: 'Prueba Escrita: Factorización de Polinomios',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '24/09/2026',
       grade: 4.75,
       observation: 'No domina trinomio cuadrado perfecto. Requiere trabajo de refuerzo.',
@@ -286,7 +284,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Básica Superior',
       subject: 'Ciencias Naturales',
       activityName: 'Lección: Ciclos Biogeoquímicos',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '23/09/2026',
       grade: 6.50,
       observation: 'Confusión entre el ciclo del nitrógeno y del carbono.',
@@ -300,7 +298,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Bachillerato',
       subject: 'Física',
       activityName: 'Resolución de Problemas: Movimiento Rectilíneo Uniforme',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '22/09/2026',
       grade: 5.25,
       observation: 'Dificultad en conversión de unidades y despeje de fórmulas.',
@@ -314,7 +312,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Bachillerato',
       subject: 'Química',
       activityName: 'Taller Experimental: Estequiometría de Reacciones',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '24/09/2026',
       grade: 5.90,
       observation: 'Error en balanceo por método redox y cálculo de reactivo limitante.',
@@ -328,7 +326,7 @@ export function getSimulatedWeeklyLowGrades(): LowGradeAlertItem[] {
       level: 'Bachillerato',
       subject: 'Matemáticas',
       activityName: 'Examen Diagnóstico: Límites y Continuidad de Funciones',
-      component: '1º APORTE',
+      component: 'APORTE 1',
       date: '25/09/2026',
       grade: 6.10,
       observation: 'Requiere tutoría individual en indeterminaciones 0/0.',
@@ -406,6 +404,115 @@ export function consolidateAlertsByStudent(items: LowGradeAlertItem[]): StudentC
 }
 
 /**
+ * Renders consolidated low-grade alerts grouped by course with the exact requested format:
+ * [Asignatura, Título de la actividad, Fecha, Estudiante, Nota alcanzada, Observaciones].
+ * When an observation is empty or not yet filled, it defaults to: "Requiere recuperación esta semana."
+ */
+export function buildCourseGroupedLowGradesTableHtml(alerts: LowGradeAlertItem[]): string {
+  if (alerts.length === 0) {
+    return `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; text-align: center; color: #166534; font-size: 13px; font-weight: 500;">
+        🎉 ¡Excelente noticia! No se registran calificaciones inferiores a 7.00/10 en el período compilado.
+      </div>
+    `;
+  }
+
+  // Group by Course
+  const courseMap = new Map<string, LowGradeAlertItem[]>();
+  alerts.forEach(item => {
+    const course = item.course || 'Sin Curso Asignado';
+    if (!courseMap.has(course)) {
+      courseMap.set(course, []);
+    }
+    courseMap.get(course)!.push(item);
+  });
+
+  return Array.from(courseMap.entries()).map(([courseName, courseAlerts]) => {
+    // Sort by student name, then subject
+    courseAlerts.sort((a, b) => a.studentName.localeCompare(b.studentName) || a.subject.localeCompare(b.subject));
+
+    const rowsHtml = courseAlerts.map((item, idx) => {
+      const gradeColor = item.grade < 5.0 ? '#b91c1c' : '#c2410c';
+      const gradeBg = item.grade < 5.0 ? '#fee2e2' : '#ffedd5';
+      const gradeBorder = item.grade < 5.0 ? '#fca5a5' : '#fed7aa';
+      const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const obsText = (item.observation && item.observation.trim().length > 0)
+        ? item.observation.trim()
+        : 'Requiere recuperación esta semana.';
+
+      return `
+        <tr style="background-color: ${rowBg}; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px 12px; font-size: 12px; font-weight: 700; color: #0f172a; vertical-align: top;">
+            ${item.subject}
+            <div style="font-size: 10px; color: #64748b; font-weight: 500; margin-top: 2px;">
+              ${item.component || ''}
+            </div>
+          </td>
+          <td style="padding: 10px 12px; font-size: 12px; color: #1e293b; vertical-align: top;">
+            <div style="font-weight: 600;">${item.activityName}</div>
+          </td>
+          <td style="padding: 10px 12px; font-size: 11px; color: #475569; white-space: nowrap; vertical-align: top; font-family: -apple-system, BlinkMacSystemFont, monospace;">
+            📅 ${item.date}
+          </td>
+          <td style="padding: 10px 12px; font-size: 12px; vertical-align: top;">
+            <div style="font-weight: 800; color: #0f172a;">${item.studentName}</div>
+            <div style="font-size: 10px; color: #64748b; font-family: monospace; margin-top: 2px;">Cód: ${item.studentCode}</div>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; vertical-align: top; white-space: nowrap;">
+            <span style="display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: 800; color: ${gradeColor}; background-color: ${gradeBg}; border-radius: 6px; border: 1px solid ${gradeBorder}; font-family: monospace;">
+              ${item.grade.toFixed(2)} / 10
+            </span>
+          </td>
+          <td style="padding: 10px 12px; font-size: 11px; color: #334155; vertical-align: top; line-height: 1.4;">
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid ${obsText === 'Requiere recuperación esta semana.' ? '#f59e0b' : '#2563eb'}; padding: 6px 8px; border-radius: 4px;">
+              ${obsText}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 20px; background-color: #ffffff; box-shadow: 0 2px 6px -1px rgba(0,0,0,0.05);">
+        <!-- Course Header -->
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 12px 18px; color: #ffffff;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700;">Consolidado por Curso</div>
+                <div style="font-size: 15px; font-weight: 800; color: #ffffff; margin-top: 1px;">Curso: ${courseName}</div>
+              </td>
+              <td style="vertical-align: middle; text-align: right;">
+                <span style="display: inline-block; background-color: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">
+                  ${courseAlerts.length} ${courseAlerts.length === 1 ? 'registro < 7.00' : 'registros < 7.00'}
+                </span>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- Table Formato Oficial -->
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-size: 10px; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; font-weight: 800;">
+              <th style="padding: 10px 12px; width: 18%;">Asignatura</th>
+              <th style="padding: 10px 12px; width: 23%;">Título de la actividad</th>
+              <th style="padding: 10px 12px; width: 11%;">Fecha</th>
+              <th style="padding: 10px 12px; width: 22%;">Estudiante</th>
+              <th style="padding: 10px 12px; text-align: center; width: 11%;">Nota alcanzada</th>
+              <th style="padding: 10px 12px; width: 15%;">Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
  * Builds HTML blocks for alerts consolidated by student.
  * Renders an organized, easy-to-read student dossier card with grade chips and details.
  */
@@ -447,7 +554,7 @@ export function buildStudentConsolidatedCardsHtml(students: StudentConsolidatedA
             </span>
           </td>
           <td style="padding: 10px 12px; font-size: 11px; color: #475569; width: 28%; line-height: 1.4;">
-            ${item.observation || 'Requiere refuerzo pedagógico'}
+            ${item.observation && item.observation.trim().length > 0 ? item.observation.trim() : 'Requiere recuperación esta semana.'}
           </td>
         </tr>
       `;
@@ -524,6 +631,7 @@ export function generateTutorReportHtml(
   const multiAlertStudentsCount = consolidatedStudents.filter(s => s.alerts.length > 1).length;
 
   const coursesList = report.courses.join(', ');
+  const courseGroupedTablesHtml = buildCourseGroupedLowGradesTableHtml(report.alerts);
   const studentCardsHtml = buildStudentConsolidatedCardsHtml(consolidatedStudents);
 
   return `
@@ -541,7 +649,7 @@ export function generateTutorReportHtml(
     <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #312e81 100%); padding: 32px 28px; color: #ffffff;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
         <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: #93c5fd; background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 9999px;">
-          NotAI CEDFI • Consolidado por Estudiante
+          NotAI CEDFI • Consolidado de Notas Bajas por Curso
         </span>
         <span style="font-size: 12px; color: #bfdbfe; font-weight: 500;">
           ${report.level}
@@ -613,19 +721,35 @@ export function generateTutorReportHtml(
         </tr>
       </table>
 
-      <!-- Detailed Table Header -->
-      <div style="margin-bottom: 14px;">
-        <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
-          Casos Consolidados por Estudiante (${totalStudents})
-        </h2>
-        <p style="font-size: 12px; color: #64748b; margin: 0;">
-          Cada recuadro agrupa todas las notas inferiores a 7.00/10 obtenidas por el estudiante, facilitando el análisis integral del caso y la toma de decisiones tutoriales:
-          ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
-        </p>
+      <!-- SECCIÓN 1: CONSOLIDADO POR CURSO (FORMATO OFICIAL REQUERIDO) -->
+      <div style="margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div>
+            <h2 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+              1. Consolidado por Curso de Notas &lt; 7.00 (Semana Previa)
+            </h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0;">
+              Formato requerido: Asignatura, Título de la actividad, Fecha, Estudiante, Nota alcanzada, Observaciones.
+            </p>
+          </div>
+          <span style="font-size: 11px; font-weight: 700; background-color: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 6px; border: 1px solid #fca5a5;">
+            ${totalAlerts} ${totalAlerts === 1 ? 'Alerta' : 'Alertas'}
+          </span>
+        </div>
+        ${courseGroupedTablesHtml}
       </div>
 
-      <!-- Student Cards Container -->
+      <!-- SECCIÓN 2: DOSSIER CONSOLIDADO POR ESTUDIANTE -->
       <div style="margin-bottom: 24px;">
+        <div style="margin-bottom: 12px;">
+          <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+            2. Casos Consolidados por Estudiante (${totalStudents})
+          </h2>
+          <p style="font-size: 12px; color: #64748b; margin: 0;">
+            Agrupación integral de cada estudiante para facilitar la lectura del caso completo y la toma de decisiones tutoriales:
+            ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
+          </p>
+        </div>
         ${studentCardsHtml}
       </div>
 
@@ -788,7 +912,7 @@ export function generateProtocolAuditReportHtml(params: {
                 </span>
               </td>
               <td style="padding: 8px 10px; font-size: 10px; color: #475569; width: 30%;">
-                ${item.observation || 'Requiere refuerzo pedagógico'}
+                ${item.observation && item.observation.trim().length > 0 ? item.observation.trim() : 'Requiere recuperación esta semana.'}
               </td>
             </tr>
           `;
@@ -1278,12 +1402,12 @@ export function getConfiguredPeriodText(
     return `Período Personalizado (${formatCustomDate(customRange.start)} al ${formatCustomDate(customRange.end)})`;
   }
   const configMap: Record<string, { days: number; label: string }> = {
-    '1-week': { days: 7, label: 'Compilado de 1 Semana' },
+    '1-week': { days: 7, label: 'Semana Previa (Últimos 7 días)' },
     '2-weeks': { days: 14, label: 'Compilado de 2 Semanas' },
     '3-weeks': { days: 21, label: 'Compilado de 3 Semanas' },
     '4-weeks': { days: 28, label: 'Compilado de 4 Semanas' },
   };
-  const conf = configMap[rangeType] || { days: 7, label: 'Compilado de 1 Semana' };
+  const conf = configMap[rangeType] || { days: 7, label: 'Semana Previa (Últimos 7 días)' };
   const end = new Date();
   const start = new Date(end.getTime() - conf.days * 24 * 60 * 60 * 1000);
   const formatDate = (d: Date) => {
@@ -1345,14 +1469,12 @@ export function extractTeacherLowGrades(params: {
       const effectiveGrade = finalGrade !== null ? finalGrade : origEq10;
 
       if (effectiveGrade !== null && effectiveGrade < 7.00) {
-        let obs = g.observation || '';
+        let obs = (g.observation || '').trim();
         if (!obs) {
           if (efDetails?.statusMessage) {
             obs = efDetails.statusMessage;
-          } else if (effectiveGrade < 5.00) {
-            obs = 'Riesgo crítico: Calificación significativamente baja';
           } else {
-            obs = 'Alerta académica: Requiere refuerzo pedagógico';
+            obs = 'Requiere recuperación esta semana.';
           }
         }
 
@@ -1365,7 +1487,7 @@ export function extractTeacherLowGrades(params: {
           subject: activity.subject,
           activityName: activity.name,
           component: activity.component,
-          date: activity.date || 'Semana Configurada',
+          date: activity.date || 'Semana Previa',
           grade: Math.trunc(effectiveGrade * 100) / 100,
           observation: obs,
         });
@@ -1416,6 +1538,7 @@ export function generateTeacherTutorReportHtml(params: {
   const totalStudents = consolidatedStudents.length;
   const multiAlertStudentsCount = consolidatedStudents.filter(s => s.alerts.length > 1).length;
 
+  const courseGroupedTablesHtml = buildCourseGroupedLowGradesTableHtml(alerts);
   const studentCardsHtml = buildStudentConsolidatedCardsHtml(consolidatedStudents);
 
   const redirectNoticeHtml = redirectNotice ? `
@@ -1505,17 +1628,35 @@ export function generateTeacherTutorReportHtml(params: {
         </div>
       </div>
 
-      <div style="margin-bottom: 14px;">
-        <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
-          Casos Consolidados por Estudiante (${totalStudents})
-        </h2>
-        <p style="font-size: 12px; color: #64748b; margin: 0;">
-          Agrupación individual por estudiante de las evaluaciones inferiores a 7.00/10 para facilitar el análisis del caso:
-          ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
-        </p>
+      <!-- SECCIÓN 1: CONSOLIDADO POR CURSO (FORMATO OFICIAL REQUERIDO) -->
+      <div style="margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div>
+            <h2 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+              1. Consolidado por Curso de Notas &lt; 7.00 (Semana Previa)
+            </h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0;">
+              Formato requerido: Asignatura, Título de la actividad, Fecha, Estudiante, Nota alcanzada, Observaciones.
+            </p>
+          </div>
+          <span style="font-size: 11px; font-weight: 700; background-color: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 6px; border: 1px solid #fca5a5;">
+            ${totalAlerts} ${totalAlerts === 1 ? 'Alerta' : 'Alertas'}
+          </span>
+        </div>
+        ${courseGroupedTablesHtml}
       </div>
 
+      <!-- SECCIÓN 2: DOSSIER CONSOLIDADO POR ESTUDIANTE -->
       <div style="margin-bottom: 24px;">
+        <div style="margin-bottom: 12px;">
+          <h2 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0;">
+            2. Casos Consolidados por Estudiante (${totalStudents})
+          </h2>
+          <p style="font-size: 12px; color: #64748b; margin: 0;">
+            Agrupación individual por estudiante de las evaluaciones inferiores a 7.00/10 para facilitar el análisis del caso:
+            ${multiAlertStudentsCount > 0 ? `<span style="display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: #ffedd5; color: #9a3412;">⚠️ ${multiAlertStudentsCount} con alertas múltiples</span>` : ''}
+          </p>
+        </div>
         ${studentCardsHtml}
       </div>
 
@@ -1640,7 +1781,7 @@ export function generateTeacherProtocolAuditHtml(params: {
                 </span>
               </td>
               <td style="padding: 8px 10px; font-size: 10px; color: #475569; width: 30%;">
-                ${item.observation || 'Requiere refuerzo pedagógico'}
+                ${item.observation && item.observation.trim().length > 0 ? item.observation.trim() : 'Requiere recuperación esta semana.'}
               </td>
             </tr>
           `;

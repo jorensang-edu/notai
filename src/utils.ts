@@ -84,6 +84,65 @@ import {
   ImprovementCategory 
 } from './types';
 
+export type CanonicalAporte = 'APORTE 1' | 'APORTE 2' | 'EVA. FINAL';
+
+export function normalizeAporte(component?: string | null): CanonicalAporte | string {
+  if (!component) return 'APORTE 1';
+  const c = component.trim().toUpperCase();
+  if (c === '1º APORTE' || c === '1ER APORTE' || c === 'APORTE 1' || c === '1 APORTE') return 'APORTE 1';
+  if (c === '2º APORTE' || c === '2DO APORTE' || c === 'APORTE 2' || c === '2 APORTE') return 'APORTE 2';
+  if (c === 'EVALUACIÓN FINAL' || c === 'EVALUACION FINAL' || c === 'EVA. FINAL' || c === 'EVA FINAL') return 'EVA. FINAL';
+  return component;
+}
+
+export function isAporte1(component?: string | null): boolean {
+  return normalizeAporte(component) === 'APORTE 1';
+}
+
+export function isAporte2(component?: string | null): boolean {
+  return normalizeAporte(component) === 'APORTE 2';
+}
+
+export function isEvaFinal(component?: string | null): boolean {
+  return normalizeAporte(component) === 'EVA. FINAL';
+}
+
+export const APORTE_STYLES = {
+  'APORTE 1': {
+    name: 'APORTE 1',
+    weight: '40%',
+    weightNum: 0.40,
+    textColor: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+    headerBg: 'bg-blue-950/40',
+    badge: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+    borderLight: 'border-blue-500/20',
+  },
+  'APORTE 2': {
+    name: 'APORTE 2',
+    weight: '40%',
+    weightNum: 0.40,
+    textColor: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
+    headerBg: 'bg-emerald-950/40',
+    badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    borderLight: 'border-emerald-500/20',
+  },
+  'EVA. FINAL': {
+    name: 'EVA. FINAL',
+    weight: '20%',
+    weightNum: 0.20,
+    textColor: 'text-purple-300',
+    bgColor: 'bg-purple-500/10',
+    borderColor: 'border-purple-500/30',
+    headerBg: 'bg-purple-950/40',
+    badge: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    borderLight: 'border-purple-500/20',
+  },
+} as const;
+
 export function getEvaluacionFinalDetails(
   grade: Grade | null | undefined,
   activity: Activity,
@@ -328,7 +387,7 @@ export function getStudentGlobalImprovementStats(
   };
 
   const evalFinalActivities = activities.filter(a => 
-    a.component === 'EVALUACIÓN FINAL' && (!course || a.course === course)
+    isEvaFinal(a.component) && (!course || a.course === course)
   );
 
   evalFinalActivities.forEach(activity => {
@@ -433,7 +492,7 @@ export function canStudentRegisterImprovement(
 
   // Otras actividades de evaluación final para validar límites
   const otherActivities = activities.filter(a => 
-    a.component === 'EVALUACIÓN FINAL' && a.id !== activity.id && (!course || a.course === course)
+    isEvaFinal(a.component) && a.id !== activity.id && (!course || a.course === course)
   );
 
   if (origEq10 >= 7.00 && origEq10 < 9.00) {
@@ -519,7 +578,7 @@ export function computeActivityFinalGrade(
   origEq10: number | null;
   efDetails?: EvaluacionFinalDetails;
 } {
-  const isEvalFinal = activity.component === 'EVALUACIÓN FINAL';
+  const isEvalFinal = isEvaFinal(activity.component);
   const origEq10 = computeCompositeOriginal(
     grade?.originalGrade ?? null,
     grade?.globalizationGrade ?? null,
@@ -557,7 +616,7 @@ export function countStudentReinforcementsForSubject(
   return grades.filter(g => {
     if (g.studentId !== studentId || !subjectActivityIds.has(g.activityId)) return false;
     const act = subjectActivities.find(a => a.id === g.activityId);
-    if (act?.component === 'EVALUACIÓN FINAL') {
+    if (isEvaFinal(act?.component)) {
       return g.improvementExamGrade != null || g.improvementWorkGrade != null || g.reinforcementGrade != null;
     }
     return g.reinforcementGrade !== null && g.reinforcementGrade !== undefined;
@@ -574,9 +633,10 @@ export function calculateComponentAverage(
   subject: string,
   ignoreImprovement = false
 ): number | null {
+  const targetNorm = normalizeAporte(component);
   const componentActivities = activities.filter(a => 
     (a.trimestre === trimestre || (!a.trimestre && trimestre === '1º Trimestre')) && 
-    a.component === component &&
+    (normalizeAporte(a.component) === targetNorm || a.component === component) &&
     a.course === course &&
     a.subject === subject
   );
@@ -609,9 +669,9 @@ export function calculateTrimestralAverage(
   subject: string,
   ignoreImprovement = false
 ): number | null {
-  const p1 = calculateComponentAverage(studentId, activities, grades, trimestre, '1º APORTE', course, subject, ignoreImprovement);
-  const p2 = calculateComponentAverage(studentId, activities, grades, trimestre, '2º APORTE', course, subject, ignoreImprovement);
-  const pf = calculateComponentAverage(studentId, activities, grades, trimestre, 'EVALUACIÓN FINAL', course, subject, ignoreImprovement);
+  const p1 = calculateComponentAverage(studentId, activities, grades, trimestre, 'APORTE 1', course, subject, ignoreImprovement);
+  const p2 = calculateComponentAverage(studentId, activities, grades, trimestre, 'APORTE 2', course, subject, ignoreImprovement);
+  const pf = calculateComponentAverage(studentId, activities, grades, trimestre, 'EVA. FINAL', course, subject, ignoreImprovement);
 
   let totalWeighted = 0;
   let weightSum = 0;
